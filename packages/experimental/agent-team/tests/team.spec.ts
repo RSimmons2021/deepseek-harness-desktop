@@ -896,6 +896,32 @@ describe('Team Remote API', () => {
     })
     await expect(ctx.agentTeams.remoteUpdateTask(lead, request)).rejects.toThrow('unexpected mutation failure')
   })
+
+  it('reports the pre-interrupt status and preserves interrupt rejections', async () => {
+    const { ctx, lead } = await setup([])
+    vi.spyOn(ctx.agentTeams, 'interrupt')
+      .mockReturnValueOnce({ previousStatus: 'running' })
+      .mockImplementationOnce(() => { throw new TeamError('no such teammate', 'TEAM_MEMBER_NOT_FOUND') })
+      .mockImplementationOnce(() => { throw new Error('unexpected interrupt failure') })
+
+    expect(ctx.agentTeams.remoteInterrupt(lead, 'editor')).toEqual({
+      ok: true,
+      value: { previousStatus: 'running' },
+    })
+    expect(ctx.agentTeams.remoteInterrupt(lead, 'ghost')).toEqual({
+      ok: false,
+      error: { code: 'team-rejected', message: 'no such teammate' },
+    })
+    expect(() => ctx.agentTeams.remoteInterrupt(lead, 'editor')).toThrow('unexpected interrupt failure')
+  })
+
+  it('waits for the next Team change without a caller-supplied signal', async () => {
+    const { ctx, lead } = await setup([])
+    const wait = vi.spyOn(ctx.agentTeams, 'waitForChange').mockResolvedValueOnce({ timedOut: true })
+
+    await expect(ctx.agentTeams.remoteWaitForChange(lead, 10_000)).resolves.toEqual({ timedOut: true })
+    expect(wait).toHaveBeenCalledWith(lead, 10_000, expect.any(AbortSignal))
+  })
 })
 
 describe('Team mailbox and waiting', () => {

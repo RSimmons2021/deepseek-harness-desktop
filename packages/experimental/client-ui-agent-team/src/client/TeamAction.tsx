@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import {
-  AnimatePresence, LayoutGroup, motion, useReducedMotion, type Transition,
+  AnimatePresence, motion, useReducedMotion, type Transition,
 } from 'motion/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   TeamMemberView as TeamRosterMember,
+  TeamInterruptMutationResult,
   TeamTaskAction,
   TeamTaskId,
   TeamTaskMutationResult,
   TeamTaskView as TeamTask,
   TeamView,
+  TeamWaitResult,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
 import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
@@ -27,6 +29,9 @@ export type TeamActionResult<T> = RemoteResult<T>
 
 /** Generated Remote result whose business value preserves Team task rejections. */
 export type TeamTaskActionResult = RemoteResult<TeamTaskMutationResult>
+
+/** Generated Remote result whose business value preserves Team interrupt rejections. */
+export type TeamInterruptActionResult = RemoteResult<TeamInterruptMutationResult>
 
 /** Business actions injected by the browser plugin. */
 export interface TeamActionInjected {
@@ -47,6 +52,13 @@ export interface TeamActionInjected {
     writeScopes?: string[]
     owner?: string
   }) => Promise<TeamTaskActionResult>
+  interrupt: (sessionId: SessionId, targetName: string) => Promise<TeamInterruptActionResult>
+  /**
+   * Hold one bounded wait for the next Team change. The surface calls this in a
+   * loop and reloads on every observed change, so the roster and task board
+   * follow the running Team without the user asking for a refresh.
+   */
+  waitForChange: (sessionId: SessionId, timeoutMs: number) => Promise<TeamActionResult<TeamWaitResult>>
   openTeammate: (sessionId: SessionId, member: TeamRosterMember) => Promise<void>
 }
 
@@ -57,7 +69,7 @@ export type TeamActionProps =
 /** Props shared by the header action and the desktop-owned workspace surface. */
 export type TeamSurfaceProps = Pick<
   TeamActionProps,
-  'sessionId' | 'load' | 'createTask' | 'updateTask' | 'openTeammate' | 't'
+  'sessionId' | 'load' | 'createTask' | 'updateTask' | 'interrupt' | 'waitForChange' | 'openTeammate' | 't'
 > & {
   /** Keep the designed Team workspace mounted as the application surface. */
   standalone?: boolean
@@ -106,7 +118,7 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
-  sessionId, load, createTask, updateTask, openTeammate, t, standalone = false,
+  sessionId, load, createTask, updateTask, interrupt, waitForChange, openTeammate, t, standalone = false,
 }: TeamSurfaceProps) {
   const [open, setOpen] = useState(standalone)
   const [loading, setLoading] = useState(false)
@@ -152,6 +164,13 @@ export function TeamAction({
     }
   }, [open, standalone])
 
+  /**
+   * Bounded hold for one live update. The host caps the wait between ten
+   * seconds and one hour and the wire carries no cancellation, so a short hold
+   * keeps an abandoned wait from outliving the surface for long.
+   */
+  const LIVE_WAIT_MS = 30_000
+
   const refresh = useCallback(async (): Promise<boolean> => {
     const requestedSession = sessionId
     const generation = ++refreshGeneration.current
@@ -173,6 +192,42 @@ export function TeamAction({
     if (!standalone) return
     void refresh()
   }, [refresh, standalone])
+
+  // Follow the running Team: hold one bounded wait, reload on every observed
+  // change, and re-enter the wait. A transport failure ends the loop and leaves
+  // the manual refresh as the way back, rather than spinning against a Remote
+  // that is not answering.
+  useEffect(() => {
+    if (!open) return
+    const requestedSession = sessionId
+    let stopped = false
+    const follow = async (): Promise<void> => {
+      while (!stopped) {
+        const waited = await waitForChange(requestedSession, LIVE_WAIT_MS)
+        if (stopped || sessionRef.current !== requestedSession) return
+        if (!waited.ok) return
+        if (!waited.value.timedOut) await refresh()
+      }
+    }
+    void follow()
+    return () => { stopped = true }
+  }, [open, refresh, sessionId, waitForChange])
+
+  const stopTeammate = useCallback(async (targetName: string): Promise<void> => {
+    const requestedSession = sessionId
+    const result = await interrupt(requestedSession, targetName)
+    if (sessionRef.current !== requestedSession) return
+    if (!result.ok) {
+      setError(failureText(result.error))
+      return
+    }
+    if (!result.value.ok) {
+      setError(failureText(result.value.error))
+      return
+    }
+    setError(null)
+    await refresh()
+  }, [interrupt, refresh, sessionId])
 
   const invalidateRefresh = useCallback((): void => {
     refreshGeneration.current += 1
@@ -274,12 +329,14 @@ export function TeamAction({
 
   const teammates = view?.members.filter(member => member.role === 'teammate') ?? []
   const assignable = view?.members.filter(member => member.status !== 'failed' && member.status !== 'provisioning') ?? []
-  const layoutTransition: Transition = reduceMotion
-    ? { duration: 0 }
-    : { type: 'spring', stiffness: 430, damping: 38, mass: 0.64 }
   const revealTransition: Transition = reduceMotion
     ? { duration: 0.01 }
     : { duration: 0.18, ease: [0.23, 1, 0.32, 1] }
+  // Content the widening card uncovers follows its geometry on the reveal
+  // tier: the CSS `ease` curve over the same 400ms the surface layers use.
+  const detailsTransition: Transition = reduceMotion
+    ? { duration: 0.01 }
+    : { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }
 
   return (
     <div className={css.root} data-team-action data-team-standalone={standalone || undefined}>
@@ -309,7 +366,15 @@ export function TeamAction({
           animate={{ opacity: 1 }}
           transition={revealTransition}
         >
-          <div className={ambientPaused ? `${css.ambient} ${css.ambientPaused}` : css.ambient} aria-hidden="true">
+          <div
+            // The ambient drift costs frames the opening card needs: its
+            // blurred fields are blended, not composited, so every drift frame
+            // re-blends the whole backdrop under four glass cards. A 24s drift
+            // held still for one 600ms open is not visible; the dropped frames
+            // during that open are.
+            className={ambientPaused || activeMemberId !== null ? `${css.ambient} ${css.ambientPaused}` : css.ambient}
+            aria-hidden="true"
+          >
             <span className={css.ambientOrange} />
             <span className={css.ambientBlue} />
             <span className={css.grain} />
@@ -362,95 +427,104 @@ export function TeamAction({
                     <h3 id="agent-team-roster-heading">{t('roster')}</h3>
                     <span className={css.sectionRule} />
                   </div>
-                  <LayoutGroup id={`agent-team-${sessionId}`}>
-                    <div className={css.roster} role="list">
-                      {view.members.map((member, index) => {
-                        const active = member.id === activeMemberId
-                        const assigned = view.tasks.filter(task => task.ownerName === member.name)
-                        const canOpen = member.role === 'teammate'
-                            && member.status !== 'failed'
-                            && member.status !== 'provisioning'
-                        const accessibleLabel = [
-                          member.name,
-                          t(memberStatusKey(member.status)),
-                          member.model === undefined ? '' : `${t('model')}: ${member.model}`,
-                          ...member.diagnostics,
-                        ].join('')
-                        return (
-                          <motion.div
-                            layout
-                            key={member.id}
-                            role="listitem"
-                            data-team-member-card={member.id}
-                            data-expanded={active ? 'true' : 'false'}
-                            className={active ? `${css.memberCard} ${css.memberCardActive}` : css.memberCard}
-                            transition={{ layout: layoutTransition }}
-                            onPointerEnter={(event) => {
-                              if (event.pointerType === 'mouse') setActiveMemberId(member.id)
-                            }}
-                            onPointerLeave={(event) => {
-                              if (event.pointerType === 'mouse') setActiveMemberId(null)
-                            }}
-                            onFocusCapture={() => { setActiveMemberId(member.id) }}
-                            onBlurCapture={() => { setActiveMemberId(null) }}
-                          >
+                  <div className={css.roster} role="list">
+                    {view.members.map((member, index) => {
+                      const active = member.id === activeMemberId
+                      const assigned = view.tasks.filter(task => task.ownerName === member.name)
+                      const canOpen = member.role === 'teammate'
+                          && member.status !== 'failed'
+                          && member.status !== 'provisioning'
+                      const accessibleLabel = [
+                        member.name,
+                        t(memberStatusKey(member.status)),
+                        member.model === undefined ? '' : `${t('model')}: ${member.model}`,
+                        ...member.diagnostics,
+                      ].join('')
+                      return (
+                        <div
+                          key={member.id}
+                          role="listitem"
+                          data-team-member-card={member.id}
+                          data-expanded={active ? 'true' : 'false'}
+                          className={active ? `${css.memberCard} ${css.memberCardActive}` : css.memberCard}
+                          onPointerEnter={(event) => {
+                            if (event.pointerType === 'mouse') setActiveMemberId(member.id)
+                          }}
+                          onPointerLeave={(event) => {
+                            if (event.pointerType === 'mouse') setActiveMemberId(null)
+                          }}
+                          onFocusCapture={() => { setActiveMemberId(member.id) }}
+                          onBlurCapture={() => { setActiveMemberId(null) }}
+                        >
+                          {member.role === 'teammate' && member.status === 'running' && (
                             <button
                               type="button"
-                              className={css.memberButton}
-                              aria-label={accessibleLabel}
-                              disabled={!canOpen}
-                              title={canOpen ? t('open') : undefined}
-                              onClick={() => {
-                                void openTeammate(sessionId, member).catch((reason: unknown) => { setError(String(reason)) })
-                              }}
+                              className={css.interruptButton}
+                              aria-label={t('interrupt')}
+                              title={t('interrupt')}
+                              onClick={() => { void stopTeammate(member.name) }}
                             >
-                              <span className={css.memberTopline}>
-                                <span className={css.roleLabel}>{t(member.role === 'lead' ? 'leadRole' : 'teammateRole')}</span>
-                                <span className={css.memberState}>
-                                  <StateDot state={member.status === 'running' ? 'ongoing' : member.status === 'failed' ? 'error' : 'done'} />
-                                  {t(memberStatusKey(member.status))}
-                                </span>
-                              </span>
-                              <span className={`${css.memberGlyph} ${css[`memberGlyph${String(index % 4)}`]}`} aria-hidden="true">
-                                <IconUserOutline16 size={44} />
-                              </span>
-                              <span className={css.memberText}>
-                                <strong>{member.name}</strong>
-                                {member.model !== undefined && <small>{t('model')}: {member.model}</small>}
-                                {member.diagnostics.map(diagnostic => (
-                                  <small key={diagnostic} className={css.diagnostic}>{diagnostic}</small>
-                                ))}
-                              </span>
-                              <AnimatePresence initial={false}>
-                                {active && (
-                                  <motion.span
-                                    className={css.memberDetails}
-                                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(8px)' }}
-                                    animate={{ opacity: 1, transform: 'translateY(0)' }}
-                                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(5px)' }}
-                                    transition={revealTransition}
-                                  >
-                                    <span className={css.detailLabel}>{t('assignedTasks')}</span>
-                                    <span className={css.detailValue}>
-                                      {assigned.length === 0 ? t('noAssignedTasks') : assigned.map(task => task.subject).join(' · ')}
-                                    </span>
-                                  </motion.span>
-                                )}
-                              </AnimatePresence>
-                              <span className={css.cardIndex}>{String(index + 1).padStart(2, '0')}</span>
+                              <IconCloseOutline16 size={13} />
                             </button>
-                          </motion.div>
-                        )
-                      })}
-                      {Array.from({ length: Math.max(0, 4 - view.members.length) }, (_, index) => (
-                        <motion.div layout key={`open-seat-${String(index)}`} role="listitem" className={`${css.memberCard} ${css.openSeat}`} transition={{ layout: layoutTransition }}>
+                          )}
+                          <button
+                            type="button"
+                            className={css.memberButton}
+                            aria-label={accessibleLabel}
+                            disabled={!canOpen}
+                            title={canOpen ? t('open') : undefined}
+                            onClick={() => {
+                              void openTeammate(sessionId, member).catch((reason: unknown) => { setError(String(reason)) })
+                            }}
+                          >
+                            <span className={css.memberTopline}>
+                              <span className={css.roleLabel}>{t(member.role === 'lead' ? 'leadRole' : 'teammateRole')}</span>
+                              <span className={css.memberState}>
+                                <StateDot state={member.status === 'running' ? 'ongoing' : member.status === 'failed' ? 'error' : 'done'} />
+                                {t(memberStatusKey(member.status))}
+                              </span>
+                            </span>
+                            <span className={`${css.memberGlyph} ${css[`memberGlyph${String(index % 4)}`]}`} aria-hidden="true">
+                              <IconUserOutline16 size={44} />
+                            </span>
+                            <span className={css.memberText}>
+                              <strong>{member.name}</strong>
+                              {member.model !== undefined && <small>{t('model')}: {member.model}</small>}
+                              {member.diagnostics.map(diagnostic => (
+                                <small key={diagnostic} className={css.diagnostic}>{diagnostic}</small>
+                              ))}
+                            </span>
+                            <AnimatePresence initial={false}>
+                              {active && (
+                                <motion.span
+                                  className={css.memberDetails}
+                                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px)' }}
+                                  animate={{ opacity: 1, transform: 'translateY(0)' }}
+                                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px)' }}
+                                  transition={detailsTransition}
+                                >
+                                  <span className={css.detailLabel}>{t('assignedTasks')}</span>
+                                  <span className={css.detailValue}>
+                                    {assigned.length === 0 ? t('noAssignedTasks') : assigned.map(task => task.subject).join(' · ')}
+                                  </span>
+                                </motion.span>
+                              )}
+                            </AnimatePresence>
+                            <span className={css.cardIndex}>{String(index + 1).padStart(2, '0')}</span>
+                          </button>
+                        </div>
+                      )
+                    })}
+                    {Array.from({ length: Math.max(0, 4 - view.members.length) }, (_, index) => (
+                      <div key={`open-seat-${String(index)}`} role="listitem" className={`${css.memberCard} ${css.openSeat}`}>
+                        <span className={css.openSeatBody}>
                           <span className={css.roleLabel}>{t('teammateRole')}</span>
                           <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
                           <span>{t('openSeat')}</span>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </LayoutGroup>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </section>
                 <section className={css.taskDock} aria-labelledby="agent-team-tasks-heading">
                   <div className={css.sectionTitle}>

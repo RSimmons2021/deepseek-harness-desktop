@@ -10,7 +10,7 @@ Agent Teams 已有权威 Host service 与浏览器 projection，但紧凑的 con
 
 ## 决策
 
-[`TeamAction`](../../../../packages/experimental/client-ui-agent-team/src/client/TeamAction.tsx) 在普通 Web build 中继续作为 conversation-header slot contribution，同时也提供 desktop root 使用的实时 Team surface。两种形式都由既有 `agentTeams/view`、`agentTeams/createTask` 与 `agentTeams/updateTask` Remote method 驱动。真实 member 占据玻璃质感 roster card；未使用容量显示为不可交互的开放席位。Mouse hover 与键盘 focus 会选择一个 card。Motion shared-layout projection 使用一个可中断 spring，让该 card 的 flex reflow 与所有 sibling 从各自测量位置开始动画。参考设计中的高饱和橘色与蓝色 ambient field 只通过缓慢、低振幅的 compositor transform 移动；reduced-motion 会冻结它们。Touch 不合成 hover，reduced-motion 也会移除 card 空间动画，状态变化会同步移除过期 Session 内容。
+[`TeamAction`](../../../../packages/experimental/client-ui-agent-team/src/client/TeamAction.tsx) 在普通 Web build 中继续作为 conversation-header slot contribution，同时也提供 desktop root 使用的实时 Team surface。两种形式都由既有 `agentTeams/view`、`agentTeams/createTask` 与 `agentTeams/updateTask` Remote method 驱动。真实 member 占据玻璃质感 roster card；未使用容量显示为不可交互的开放席位。Mouse hover 与键盘 focus 会选择一个 card。被选中的 card 由 CSS 直接动画自身的 `flex-grow`，sibling 通过普通 layout 让出宽度，变宽的 card 会在过程中重新换行。Grow、8 像素抬升、surface 色调、border 与投影一起以参考设计的过冲曲线在 600ms 内落定；变宽后露出的顶部高光与已分配任务区块在 400ms 内跟进。参考设计中的高饱和橘色与蓝色 ambient field 只通过缓慢、低振幅的 compositor transform 移动；reduced-motion 会冻结它们。Touch 不合成 hover，reduced-motion 也会移除 card 空间动画，状态变化会同步移除过期 Session 内容。
 
 Electron 在任何页面加载前会向 renderer user agent 追加 `DeepSeekHarnessDesktop` 标记。Layout plugin 使用这个 assembly-time 标记注册最小化 [`DesktopFrame`](../../../../packages/client/ui-layout/src/client/DesktopFrame.tsx)，而不是浏览器 `AppFrame`。该 frame 保留 stock child-slot declaration，使普通 Client plugin 可以激活，但只渲染 `desktop.root` seat。Agent Teams Client 占据该 seat，选择现有 Session 或创建一个 Session，并立即挂载 Team Alpha workspace。浏览器 sidebar、conversation hero、settings onboarding 与 testing notice 均不会被渲染，而不是在首次绘制后再隐藏。
 
@@ -30,7 +30,7 @@ Desktop application 是源码 checkout 开发 host，不是已签名或可分发
 
 **在 Web renderer 中启用 Node integration。** 拒绝，因为当前 Agent Team workspace 不需要 desktop privilege，而暴露 Node 会把 Web content bug 转化为 local-code execution。
 
-**直接动画 card width。** 拒绝，因为 width tween 会在每帧触发 layout，并且在 hover 快速重定向时无法保持 sibling 连续性。Shared-layout projection 只测量一次新的 flex layout，然后动画 compositor transform。
+**用 Motion shared layout 投影 reflow。** 在测量参考设计后拒绝：参考设计本身动画 `flex-grow`，而 transform projection 只会缩放一个已测量的盒子，不会让其中文本重新换行。代价是被接受而非不存在 —— 增长 flex item 会在每帧触发 layout，且 hover 被中断时会从当前计算值而非测量盒子重新定位。
 
 ## 测试
 

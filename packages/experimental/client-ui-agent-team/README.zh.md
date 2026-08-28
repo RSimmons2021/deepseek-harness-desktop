@@ -33,6 +33,8 @@ kind: "package-reference"
 
 ### 管理任务板
 
+Workspace 打开期间会保持一个有界 `agentTeams/waitForChange` 调用，在每次观察到变化时重新加载整个 view 并重新进入等待；transport failure 会结束该循环，并把手动刷新留作退路。运行中的 teammate card 在 card button 旁边显示中断控件 —— 绝不放在其内部，因为 card button 本身就是打开 teammate 的目标，而 button 不能嵌套。
+
 任务板展示 task identity、owner、blocker、readiness、提示性 write scope 与重叠 warning。用户可以通过 `agentTeams/createTask` 与 `agentTeams/updateTask` 创建、编辑、分配或取消分配、完成、重开和删除任务。每次 update 都发送当前显示的 revision，create 或 update rejection 都保留为显式 business result。
 
 -----

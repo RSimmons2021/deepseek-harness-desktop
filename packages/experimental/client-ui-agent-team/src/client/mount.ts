@@ -58,6 +58,12 @@ function registerUi(ctx: ClientContext): void {
         ...owner === undefined ? {} : { owner },
       })
     },
+    async interrupt(sessionId, targetName) {
+      return await ctx.remote.agentTeams.interrupt(leadSessionId(sessionId), targetName)
+    },
+    async waitForChange(sessionId, timeoutMs) {
+      return await ctx.remote.agentTeams.waitForChange(leadSessionId(sessionId), timeoutMs)
+    },
     async openTeammate(sessionId: SessionId, member: TeamRosterMember): Promise<void> {
       if (member.role !== 'teammate') return
       const parentSessionId = leadSessionId(sessionId)

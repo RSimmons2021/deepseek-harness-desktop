@@ -22,6 +22,7 @@ import type {
   SpawnTeammateRequest,
   SpawnTeammateResult,
   TeamMemberView,
+  TeamInterruptMutationResult,
   TeamTaskMutationResult,
   TeamTaskView,
   TeamView,
@@ -258,6 +259,38 @@ export class TeamService extends TypertRemoteService {
   @Remote('updateTask')
   remoteUpdateTask(agent: Agent, request: UpdateTeamTaskRequest): Promise<TeamTaskMutationResult> {
     return this.taskMutationResult(this.updateTask(agent, request))
+  }
+
+  /**
+   * Interrupt one live teammate turn through the generated Remote API.
+   * @param agent - exact live Lead Agent authorizing the interrupt.
+   * @param targetName - durable teammate name.
+   * @returns the status sampled before cancellation, or a typed Team rejection.
+   */
+  @Remote('interrupt')
+  remoteInterrupt(agent: Agent, targetName: string): TeamInterruptMutationResult {
+    try {
+      return { ok: true, value: this.interrupt(agent, targetName) }
+    } catch (error) {
+      if (!(error instanceof TeamError)) throw error
+      return { ok: false, error: { code: 'team-rejected', message: error.message } }
+    }
+  }
+
+  /**
+   * Wait for the next Team-domain or member-status change through the generated Remote API.
+   *
+   * A browser holds this call open and refetches {@link remoteView} whenever it
+   * resolves with a change. The wire carries no cancellation, so the bounded
+   * timeout is the only end of the wait: a browser that disconnects leaves one
+   * wait outstanding until it expires.
+   * @param agent - exact live Team member waiting for activity.
+   * @param timeoutMs - bounded wait duration from ten seconds through one hour.
+   * @returns one observed change or a timeout result.
+   */
+  @Remote('waitForChange')
+  async remoteWaitForChange(agent: Agent, timeoutMs: number): Promise<TeamWaitResult> {
+    return await this.waitForChange(agent, timeoutMs, new AbortController().signal)
   }
 
   /** Preserve Team task rejections while allowing unexpected failures to reject the Remote call. */

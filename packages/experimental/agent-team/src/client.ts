@@ -2,6 +2,8 @@
 
 export type {
   CreateTeamTaskRequest,
+  TeamInterruptMutationResult,
+  TeamInterruptView,
   TeamMemberView,
   TeamTaskAction,
   TeamTaskId,
@@ -9,5 +11,6 @@ export type {
   TeamTaskStatus,
   TeamTaskView,
   TeamView,
+  TeamWaitResult,
   UpdateTeamTaskRequest,
 } from './types.ts'

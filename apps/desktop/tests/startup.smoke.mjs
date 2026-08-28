@@ -46,7 +46,7 @@ try {
   const beforeMember = await member.boundingBox()
   const beforeSecond = await secondCard.boundingBox()
   await member.hover()
-  await page.waitForTimeout(550)
+  await page.waitForTimeout(750)
   const expandedMember = await member.boundingBox()
   const shiftedSecond = await secondCard.boundingBox()
   assert.ok(beforeMember !== null && expandedMember !== null && expandedMember.width > beforeMember.width + 20)

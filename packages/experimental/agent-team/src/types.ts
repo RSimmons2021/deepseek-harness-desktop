@@ -212,6 +212,22 @@ export type TeamTaskMutationResult =
     }
   }
 
+/** Status one teammate held immediately before an interrupt was applied. */
+export interface TeamInterruptView {
+  readonly previousStatus: 'running' | 'idle' | 'inactive'
+}
+
+/** Outcome of one Remote interrupt, preserving Team rejections as business values. */
+export type TeamInterruptMutationResult =
+  | { readonly ok: true; readonly value: TeamInterruptView }
+  | {
+    readonly ok: false
+    readonly error: {
+      readonly code: 'team-rejected'
+      readonly message: string
+    }
+  }
+
 /** Result of waiting for Team activity. */
 export interface TeamWaitResult {
   readonly timedOut: boolean

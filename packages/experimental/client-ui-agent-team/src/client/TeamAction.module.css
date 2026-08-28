@@ -51,6 +51,12 @@
   --team-stroke: color-mix(in srgb, var(--team-ink) 13%, transparent);
   --team-stroke-strong: color-mix(in srgb, var(--team-orange) 52%, transparent);
   --team-danger: var(--dsw-static-red-400);
+  /* Card opening choreography: the card's own geometry and surface settle on
+     one overshooting curve, and whatever the widened card uncovers follows on
+     the shorter linear-in curve. */
+  --team-card-open-duration: 600ms;
+  --team-card-open-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --team-card-reveal-duration: 400ms;
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 
@@ -330,7 +336,12 @@
     0 28px 70px color-mix(in srgb, var(--dsw-static-neutral-1000) 25%, transparent);
   backdrop-filter: blur(26px) saturate(122%);
   transform-origin: center;
-  transition: border-color 160ms ease, background-color 160ms ease;
+  transition:
+    flex-grow var(--team-card-open-duration) var(--team-card-open-ease),
+    transform var(--team-card-open-duration) var(--team-card-open-ease),
+    background-color var(--team-card-open-duration) var(--team-card-open-ease),
+    border-color var(--team-card-open-duration) var(--team-card-open-ease),
+    box-shadow var(--team-card-open-duration) var(--team-card-open-ease);
 }
 
 .memberCard::before {
@@ -341,15 +352,33 @@
   content: '';
   opacity: 0;
   pointer-events: none;
-  transition: opacity 180ms ease;
+  transition: opacity var(--team-card-reveal-duration) ease;
+}
+
+.memberCard::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--team-ink) 40%, transparent), transparent);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--team-card-reveal-duration) ease;
 }
 
 .memberCardActive {
-  flex-grow: 1.68;
+  flex-grow: 1.4;
   border-color: var(--team-stroke-strong);
+  box-shadow:
+    inset 0 1px color-mix(in srgb, var(--team-ink) 11%, transparent),
+    0 30px 60px color-mix(in srgb, var(--dsw-static-neutral-1000) 40%, transparent);
+  transform: translateY(-8px);
 }
 
-.memberCardActive::before {
+.memberCardActive::before,
+.memberCardActive::after {
   opacity: 1;
 }
 
@@ -374,6 +403,27 @@
   color: inherit;
   cursor: default;
   opacity: 1;
+}
+
+.interruptButton {
+  position: absolute;
+  z-index: 2;
+  top: clamp(18px, 2.1vw, 34px);
+  right: clamp(18px, 2.1vw, 34px);
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--team-stroke);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--team-surface-strong) 82%, transparent);
+  color: var(--team-ink-muted);
+  cursor: pointer;
+}
+
+.interruptButton:hover {
+  border-color: var(--team-danger);
+  color: var(--team-danger);
 }
 
 .memberCard:focus-within {
@@ -510,15 +560,21 @@
 }
 
 .openSeat {
+  border-style: dashed;
+  color: var(--team-ink-faint);
+  font-size: 11px;
+  text-align: center;
+}
+
+.openSeatBody {
+  display: flex;
+  width: 100%;
+  min-width: 0;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 16px;
   padding: clamp(18px, 2.1vw, 34px);
-  border-style: dashed;
-  color: var(--team-ink-faint);
-  font-size: 11px;
-  text-align: center;
 }
 
 .openSeat .roleLabel {
@@ -765,6 +821,16 @@
   .ambientOrange,
   .ambientBlue {
     animation: none;
+  }
+
+  .memberCard,
+  .memberCard::before,
+  .memberCard::after {
+    transition: none;
+  }
+
+  .memberCardActive {
+    transform: none;
   }
 }
 

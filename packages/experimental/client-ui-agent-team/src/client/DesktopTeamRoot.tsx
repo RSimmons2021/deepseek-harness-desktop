@@ -87,9 +87,11 @@ export function DesktopTeamRoot({ ensureSession, ...props }: DesktopTeamRootProp
                 animate={{ opacity: 1, transform: 'translateY(0)' }}
                 transition={{ duration: 0.36, delay: reduceMotion ? 0 : index * 0.055 }}
               >
-                <span className={css.roleLabel}>{index === 0 ? props.t('leadRole') : props.t('teammateRole')}</span>
-                <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
-                <span>{index === 0 ? props.t('preparingLead') : props.t('openSeat')}</span>
+                <span className={css.openSeatBody}>
+                  <span className={css.roleLabel}>{index === 0 ? props.t('leadRole') : props.t('teammateRole')}</span>
+                  <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
+                  <span>{index === 0 ? props.t('preparingLead') : props.t('openSeat')}</span>
+                </span>
               </motion.div>
             ))}
           </div>

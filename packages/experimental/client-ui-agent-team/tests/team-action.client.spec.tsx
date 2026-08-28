@@ -84,6 +84,13 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
       ok: true,
       value: { ok: true, value: { ...task, revision: 2 } },
     }),
+    interrupt: () => Promise.resolve({
+      ok: true,
+      value: { ok: true, value: { previousStatus: 'running' } },
+    }),
+    // Default fixture never reports a change, so the follow loop parks on its
+    // first wait instead of reloading underneath the assertions.
+    waitForChange: () => new Promise(() => {}),
     openTeammate: () => Promise.resolve(),
     ...overrides,
   }
@@ -126,6 +133,51 @@ describe('TeamAction', () => {
     expect(screen.getByText('write scopes overlap with task-2')).toBeTruthy()
     fireEvent.click(worker)
     await waitFor(() => { expect(openTeammate).toHaveBeenCalledWith(SESSION, view.members[1]) })
+  })
+
+  it('interrupts a running teammate and reloads the roster afterwards', async () => {
+    const running: TeamView = {
+      ...view,
+      members: view.members.map(member => member.role === 'teammate'
+        ? { ...member, status: 'running' as const }
+        : member),
+    }
+    const load = vi.fn(() => Promise.resolve({ ok: true as const, value: running }))
+    const interrupt = vi.fn(() => Promise.resolve({
+      ok: true as const,
+      value: { ok: true as const, value: { previousStatus: 'running' as const } },
+    }))
+    render(<TeamAction {...props(actions({ load, interrupt }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+
+    const stop = await screen.findByRole('button', { name: zh.interrupt })
+    fireEvent.click(stop)
+    await waitFor(() => { expect(interrupt).toHaveBeenCalledWith(SESSION, 'worker') })
+    await waitFor(() => { expect(load).toHaveBeenCalledTimes(2) })
+  })
+
+  it('offers no interrupt for a teammate that is not running', async () => {
+    render(<TeamAction {...props(actions())} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByRole('button', { name: /worker/u })
+    expect(screen.queryByRole('button', { name: zh.interrupt })).toBeNull()
+  })
+
+  it('reloads when the live wait observes a change and stops after a transport failure', async () => {
+    const load = vi.fn(() => Promise.resolve({ ok: true as const, value: view }))
+    const waitForChange = vi.fn()
+      .mockResolvedValueOnce({ ok: true, value: { timedOut: false } })
+      .mockResolvedValueOnce({ ok: true, value: { timedOut: true } })
+      .mockResolvedValueOnce(remoteFailure('gateway closed'))
+    render(<TeamAction {...props(actions({ load, waitForChange }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+
+    // One observed change reloads; the timeout re-enters the wait; the failure
+    // ends the loop, so the wait count settles instead of spinning.
+    await waitFor(() => { expect(load).toHaveBeenCalledTimes(2) })
+    await waitFor(() => { expect(waitForChange).toHaveBeenCalledTimes(3) })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(waitForChange).toHaveBeenCalledTimes(3)
   })
 
   it('expands a member card for mouse hover and keyboard focus without treating touch as hover', async () => {

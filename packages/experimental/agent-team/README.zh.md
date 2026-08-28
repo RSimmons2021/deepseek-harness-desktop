@@ -167,7 +167,7 @@ dispose 会关闭准入、中止并等待已获准的创建与 mailbox dispatch 
 
 ### 浏览器 Remote
 
-`TeamService` 除了 roster、mailbox、task 与 lifecycle operation，还直接负责生成式 `agentTeams/view`、`agentTeams/createTask` 与 `agentTeams/updateTask` Remote method。`./remote` 导出由 Web UI 挂载的 Client contribution，`./client` 则重新导出可在浏览器 compilation face 中安全使用的 request、view 与 task mutation result type。Typert 在外层 `RemoteResult` 中保留 transport failure；create 与 update rejection 则作为 transport 成功响应中的显式 domain result，其中过期的 update revision 会区分为 task conflict。
+`TeamService` 除了 roster、mailbox、task 与 lifecycle operation，还直接负责生成式 `agentTeams/view`、`agentTeams/createTask`、`agentTeams/updateTask`、`agentTeams/interrupt` 与 `agentTeams/waitForChange` Remote method。`waitForChange` 是浏览器的实时更新接缝：wire 不承载 cancellation，因此其有界 timeout 是等待唯一的终点，断开连接的浏览器会留下一个 wait 直到超时。Spawn 与 peer message 仍为 host-only，因为两者都接受 `AbortSignal`，而 spawn 还需要由 [`dsh-experimental-tool-agent-team`](../tool-agent-team/README.zh.md) 拥有的 teammate provider。`./remote` 导出由 Web UI 挂载的 Client contribution，`./client` 则重新导出可在浏览器 compilation face 中安全使用的 request、view 与 task mutation result type。Typert 在外层 `RemoteResult` 中保留 transport failure；create 与 update rejection 则作为 transport 成功响应中的显式 domain result，其中过期的 update revision 会区分为 task conflict。
 
 ## 模型体验
 
