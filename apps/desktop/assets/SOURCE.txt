@@ -1,0 +1,2 @@
+icon.png uses the whale mark from the official DeepSeek-LLM logo asset:
+https://github.com/deepseek-ai/DeepSeek-LLM/blob/main/images/logo.svg

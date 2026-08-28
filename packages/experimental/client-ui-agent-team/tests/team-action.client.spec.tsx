@@ -128,6 +128,34 @@ describe('TeamAction', () => {
     await waitFor(() => { expect(openTeammate).toHaveBeenCalledWith(SESSION, view.members[1]) })
   })
 
+  it('expands a member card for mouse hover and keyboard focus without treating touch as hover', async () => {
+    render(<TeamAction {...props(actions())} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    const worker = await screen.findByRole('button', { name: /worker/u })
+    const card = worker.closest<HTMLElement>('[data-team-member-card]')
+    if (card === null) throw new Error('worker card missing')
+
+    fireEvent.pointerEnter(card, { pointerType: 'touch' })
+    expect(card.dataset.expanded).toBe('false')
+    fireEvent.pointerEnter(card, { pointerType: 'mouse' })
+    expect(card.dataset.expanded).toBe('true')
+    fireEvent.pointerLeave(card, { pointerType: 'mouse' })
+    expect(card.dataset.expanded).toBe('false')
+    fireEvent.focus(worker)
+    expect(card.dataset.expanded).toBe('true')
+    fireEvent.blur(worker)
+    expect(card.dataset.expanded).toBe('false')
+  })
+
+  it('lets a standalone workspace pause and resume ambient background motion', async () => {
+    render(<TeamAction {...props(actions())} standalone />)
+    await screen.findByText('Implement runtime')
+
+    const pause = screen.getByRole('button', { name: zh.pauseMotion })
+    fireEvent.click(pause)
+    expect(screen.getByRole('button', { name: zh.resumeMotion })).toBeTruthy()
+  })
+
   it('keeps only the newest overlapping refresh for one session', async () => {
     const older = Promise.withResolvers<TeamActionResult<TeamView>>()
     const newer = Promise.withResolvers<TeamActionResult<TeamView>>()

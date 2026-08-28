@@ -105,6 +105,7 @@ async function bench(options: {
     openSubagent: (address: unknown) => { navigation.push(['open', address]) },
   })
   ctx.provide('conversation', {})
+  ctx.provide('uiSession', {} as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
   await ctx.plugin(SlotRegistry).await()
   const collapseHeader = ctx.slots.register({
@@ -143,7 +144,7 @@ async function bench(options: {
 describe('ui-team browser plugin', () => {
   it('registers one disposable header action with RPC-backed task operations', async () => {
     const b = await bench()
-    expect(inject).toEqual(['sessions', 'remote', 'slots', 'locale'])
+    expect(inject).toEqual(['sessions', 'remote', 'slots', 'locale', 'uiSession'])
     expect(b.entry()).toMatchObject({
       options: { id: 'agent-team', order: 20 },
       locale: 'agent-team',

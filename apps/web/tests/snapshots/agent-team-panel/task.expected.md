@@ -2,28 +2,44 @@
   - img
   - text: Agent Team
 - dialog "Agent Team":
-  - strong: Agent Team
-  - button "Refresh Team":
-    - img
-  - button "Close":
-    - img
-  - heading "Members" [level=3]
-  - 'button "lead Idle · Model: deepseek-v4-flash" [disabled]'
-  - heading "Shared tasks" [level=3]
-  - button "New task":
-    - img
-    - text: New task
-  - article:
-    - strong: Browser task
-    - text: Pending
-    - paragraph: Created through the assembled browser
-    - text: "task-1 Ready Write scopes: src/web Owner"
-    - combobox "Owner":
-      - option "Unowned" [selected]
-      - option "lead"
-    - button "Edit":
+  - banner:
+    - text: Collaborative intelligence space
+    - heading "Agent Team // Workspace" [level=2]
+    - paragraph: A live, shared workspace for the lead agent and teammates
+    - text: Active session
+    - button "Refresh Team":
       - img
-      - text: Edit
-    - button "Delete":
+    - button "Close":
       - img
-      - text: Delete
+  - region "Members":
+    - heading "Members" [level=3]
+    - list:
+      - listitem:
+        - 'button "leadIdleModel: deepseek-v4-flash" [disabled]':
+          - text: Lead agent Idle
+          - strong: lead
+          - text: "Model: deepseek-v4-flash 01"
+      - listitem: Collaborator Waiting for collaborator
+      - listitem: Collaborator Waiting for collaborator
+      - listitem: Collaborator Waiting for collaborator
+  - region "Shared tasks":
+    - text: Live team state
+    - heading "Shared tasks" [level=3]
+    - button "New task":
+      - img
+      - text: New task
+    - article:
+      - strong: Browser task
+      - text: Pending
+      - paragraph: Created through the assembled browser
+      - text: "task-1 Ready Write scopes: src/web Owner"
+      - combobox "Owner":
+        - option "Unowned" [selected]
+        - option "lead"
+      - button "Edit":
+        - img
+        - text: Edit
+      - button "Delete":
+        - img
+        - text: Delete
+  - contentinfo: Live team state 1 members 1 shared tasks

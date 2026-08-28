@@ -1,0 +1,32 @@
+{
+  "name": "@deepseek-ai/dsh-desktop",
+  "description": "Electron desktop host for the DeepSeek Harness Web and Agent Teams workspace",
+  "version": "0.1.2-alpha.1",
+  "type": "module",
+  "main": "lib/main.js",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "apps/desktop"
+  },
+  "files": [
+    "assets",
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsc -b && tsdown",
+    "start": "electron .",
+    "test:smoke": "node tests/startup.smoke.mjs"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "electron": "44.0.0",
+    "playwright": "^1.49.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
+  }
+}

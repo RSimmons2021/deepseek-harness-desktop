@@ -10,12 +10,14 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import {
   TeamAction, type TeamActionInjected, type TeamActionResult, type TeamTaskActionResult,
 } from './TeamAction.tsx'
+import { DesktopTeamRoot, type DesktopTeamRootInjected } from './DesktopTeamRoot.tsx'
 import { en, NS, zh, type TeamKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -26,7 +28,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required browser services for RPC, navigation, slots, and localized copy. */
-export const inject = ['sessions', 'remote', 'slots', 'locale']
+export const inject = ['sessions', 'remote', 'slots', 'locale', 'uiSession']
+
+function isDesktopSurface(): boolean {
+  if (typeof window === 'undefined') return false
+  return navigator.userAgent.includes('DeepSeekHarnessDesktop')
+    || new URL(window.location.href).searchParams.get('dsh-surface') === 'desktop'
+}
 
 function registerUi(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'client-ui-agent-team: dictionaries')
@@ -61,6 +69,21 @@ function registerUi(ctx: ClientContext): void {
         mode: 'continuable',
       })
     },
+  }
+
+  if (isDesktopSurface()) {
+    const desktopActions: DesktopTeamRootInjected = {
+      ...actions,
+      ensureSession: async () => {
+        const snapshot = sessions.list.getSnapshot()
+        const sessionId = snapshot.current ?? snapshot.ids[0] ?? await sessions.create()
+        if (sessions.list.getSnapshot().current !== sessionId) sessions.open(sessionId)
+      },
+    }
+    ctx.slots.inject('desktop.root', () => ctx.slots.register({
+      name: 'desktop.root', locale: NS, inject: () => desktopActions,
+    }, DesktopTeamRoot))
+    return
   }
 
   ctx.slots.inject(

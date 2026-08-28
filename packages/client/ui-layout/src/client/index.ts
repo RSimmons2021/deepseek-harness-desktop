@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type { PanelActions } from './service.ts'
 import { AppFrame } from './AppFrame.tsx'
+import { DesktopFrame } from './DesktopFrame.tsx'
 import { createLayoutStore } from './stores.ts'
 import { LayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
@@ -84,6 +85,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * `id` is added beside the shipped entries instead of replacing them.
      */
     'shell.overlay': { kind: 'list'; scope: 'root' }
+    /** Whole-window content rendered instead of browser chrome in Electron. */
+    'desktop.root': { kind: 'single'; scope: 'root' }
   }
 }
 
@@ -110,6 +113,13 @@ export interface DetailsOwnerProps {}
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme', 'locale']
 
+/** The Electron surface supplies its own full-screen root through Agent Teams. */
+function usesDesktopRoot(): boolean {
+  if (typeof window === 'undefined') return false
+  return navigator.userAgent.includes('DeepSeekHarnessDesktop')
+    || new URL(window.location.href).searchParams.get('dsh-surface') === 'desktop'
+}
+
 /**
  * Client plugin body: provide ctx.layout, then one register() call — AppFrame
  * into 'root' with the four child-slot declarations, the layout store seat,
@@ -120,25 +130,34 @@ export function apply(ctx: ClientContext): void {
   const layout = new LayoutController()
   ctx.effect(() => {
     const disposeService = ctx.reflect.provide('layout', layout)
-    const disposeRegistration = ctx.slots.register({
-      name: 'root',
-      locale: 'common',
-      children: {
-        'sidebar': { kind: 'single', scope: 'root' },
-        'conversation': { kind: 'single', scope: 'session-maybe' },
-        'details': { kind: 'single', scope: 'session' },
-        'shell.overlay': { kind: 'list', scope: 'root' },
-      },
-      // Exclusive store: the factory itself — the framework instantiates per
-      // entry and delivers useStore/actions to AppFrame as standard props.
-      store: createLayoutStore,
-      // The hook's only side effect connects the root store to ctx.layout;
-      // conversation business actions belong to their registrants.
-      inject: (actions: PanelActions) => {
-        layout.attachPanels(actions)
-        return {}
-      },
-    }, AppFrame)
+    // Each branch declares its own table: a const assertion does not reach
+    // into the arms of a conditional, so a spread-in-place widens the specs.
+    const stockChildren = {
+      'sidebar': { kind: 'single', scope: 'root' },
+      'conversation': { kind: 'single', scope: 'session-maybe' },
+      'details': { kind: 'single', scope: 'session' },
+      'shell.overlay': { kind: 'list', scope: 'root' },
+    } as const
+    const desktopChildren = {
+      ...stockChildren,
+      'desktop.root': { kind: 'single', scope: 'root' },
+    } as const
+    const disposeRegistration = usesDesktopRoot()
+      ? ctx.slots.register({ name: 'root', children: desktopChildren }, DesktopFrame)
+      : ctx.slots.register({
+        name: 'root',
+        locale: 'common',
+        children: stockChildren,
+        // Exclusive store: the factory itself — the framework instantiates per
+        // entry and delivers useStore/actions to AppFrame as standard props.
+        store: createLayoutStore,
+        // The hook's only side effect connects the root store to ctx.layout;
+        // conversation business actions belong to their registrants.
+        inject: (actions: PanelActions) => {
+          layout.attachPanels(actions)
+          return {}
+        },
+      }, AppFrame)
     return () => {
       disposeRegistration()
       // provide()'s disposer settles asynchronously; teardown is synchronous fire-and-forget.

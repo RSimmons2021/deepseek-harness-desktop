@@ -47,6 +47,24 @@ describe('ui-layout client apply', () => {
     expect(slots.spec('details')).toEqual({ kind: 'single', scope: 'session' })
   })
 
+  it('keeps browser slot contracts declared but renders only the desktop seat in Electron', async () => {
+    const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get')
+      .mockReturnValue('Mozilla/5.0 DeepSeekHarnessDesktop')
+    try {
+      const { ctx, slots } = await bench()
+      const fiber = ctx.plugin({ inject: [...inject], apply })
+      await fiber.await()
+      expect(slots.entries('root')).toHaveLength(1)
+      expect(slots.spec('desktop.root')).toEqual({ kind: 'single', scope: 'root' })
+      expect(slots.spec('sidebar')).toEqual({ kind: 'single', scope: 'root' })
+      expect(slots.entries('root')[0]?.inject).toBeUndefined()
+      await fiber.dispose()
+      expect(slots.spec('desktop.root')).toBeUndefined()
+    } finally {
+      userAgent.mockRestore()
+    }
+  })
+
   it('injects no business face and attaches the layout actions', async () => {
     const { ctx, slots } = await bench()
     const fiber = ctx.plugin({ inject: [...inject], apply })

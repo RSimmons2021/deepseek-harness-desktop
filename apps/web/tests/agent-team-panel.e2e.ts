@@ -88,7 +88,7 @@ describe('web e2e: Agent Teams panel', () => {
     const action = page.locator('[data-team-action]')
     await action.getByRole('button', { name: /Agent Team/iu }).click()
     await action.getByText('No shared tasks yet').waitFor()
-    await action.getByText('lead').waitFor()
+    await action.getByText('lead', { exact: true }).waitFor()
 
     await action.getByRole('button', { name: 'New task' }).click()
     await action.getByPlaceholder('Task subject').fill('Browser task')

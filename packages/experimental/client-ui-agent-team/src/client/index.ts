@@ -5,7 +5,8 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { mountAgentTeamUi } from './mount.ts'
 
 export { inject } from './mount.ts'
-export type { TeamActionInjected, TeamActionProps, TeamActionResult } from './TeamAction.tsx'
+export type { TeamActionInjected, TeamActionProps, TeamActionResult, TeamSurfaceProps } from './TeamAction.tsx'
+export type { DesktopTeamRootInjected, DesktopTeamRootProps } from './DesktopTeamRoot.tsx'
 export type { TeamKey } from './locales.ts'
 
 /** Mount the generated Team Remote contribution and its browser UI. */

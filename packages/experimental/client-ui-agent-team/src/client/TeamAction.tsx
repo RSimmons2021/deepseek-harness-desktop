@@ -14,7 +14,8 @@ import type {
 import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
   IconCheckOutline14, IconCloseOutline16, IconEditOutline16, IconPlusOutline16,
-  IconRefreshOutline14, IconTrashOutline16, IconUserOutline16, StateDot,
+  IconPauseOutline16, IconPlayOutline16, IconRefreshOutline14, IconTrashOutline16,
+  IconUserOutline16, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -52,6 +53,15 @@ export interface TeamActionInjected {
 /** Full props of the Team conversation-header action. */
 export type TeamActionProps =
   PropsRuntime<'conversation.session.header.actions'> & TeamActionInjected & PropsLocale<typeof NS>
+
+/** Props shared by the header action and the desktop-owned workspace surface. */
+export type TeamSurfaceProps = Pick<
+  TeamActionProps,
+  'sessionId' | 'load' | 'createTask' | 'updateTask' | 'openTeammate' | 't'
+> & {
+  /** Keep the designed Team workspace mounted as the application surface. */
+  standalone?: boolean
+}
 
 interface Draft {
   subject: string
@@ -96,9 +106,9 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
-  sessionId, load, createTask, updateTask, openTeammate, t,
-}: TeamActionProps) {
-  const [open, setOpen] = useState(false)
+  sessionId, load, createTask, updateTask, openTeammate, t, standalone = false,
+}: TeamSurfaceProps) {
+  const [open, setOpen] = useState(standalone)
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<TeamView | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -108,6 +118,7 @@ export function TeamAction({
   const [editDraft, setEditDraft] = useState<Draft>(EMPTY_DRAFT)
   const [pendingTasks, setPendingTasks] = useState<ReadonlySet<string>>(() => new Set())
   const [activeMemberId, setActiveMemberId] = useState<SessionId | null>(null)
+  const [ambientPaused, setAmbientPaused] = useState(false)
   const reduceMotion = useReducedMotion()
   const sessionRef = useRef(sessionId)
   const refreshGeneration = useRef(0)
@@ -115,7 +126,7 @@ export function TeamAction({
 
   useEffect(() => {
     refreshGeneration.current += 1
-    setOpen(false)
+    setOpen(standalone)
     setLoading(false)
     setView(null)
     setError(null)
@@ -125,13 +136,13 @@ export function TeamAction({
     setEditDraft(EMPTY_DRAFT)
     setPendingTasks(new Set())
     setActiveMemberId(null)
-  }, [sessionId])
+  }, [sessionId, standalone])
 
   useEffect(() => {
     if (!open) return
     const previousOverflow = document.body.style.overflow
     const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpen(false)
+      if (!standalone && event.key === 'Escape') setOpen(false)
     }
     document.body.style.overflow = 'hidden'
     document.addEventListener('keydown', closeOnEscape)
@@ -139,7 +150,7 @@ export function TeamAction({
       document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', closeOnEscape)
     }
-  }, [open])
+  }, [open, standalone])
 
   const refresh = useCallback(async (): Promise<boolean> => {
     const requestedSession = sessionId
@@ -157,6 +168,11 @@ export function TeamAction({
       return false
     }
   }, [load, sessionId])
+
+  useEffect(() => {
+    if (!standalone) return
+    void refresh()
+  }, [refresh, standalone])
 
   const invalidateRefresh = useCallback((): void => {
     refreshGeneration.current += 1
@@ -266,255 +282,281 @@ export function TeamAction({
     : { duration: 0.18, ease: [0.23, 1, 0.32, 1] }
 
   return (
-    <div className={css.root} data-team-action>
-      <button
-        type="button"
-        className={css.trigger}
-        aria-expanded={open}
-        onClick={() => {
-          const next = !open
-          setOpen(next)
-          if (next) void refresh()
-        }}
-      >
-        <IconUserOutline16 size={14} />
-        <span>{t('trigger')}</span>
-        {teammates.length > 0 && <span className={css.count}>{teammates.length}</span>}
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            className={css.panel}
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('trigger')}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={revealTransition}
-          >
-            <div className={css.ambient} aria-hidden="true">
-              <span className={css.ambientOrange} />
-              <span className={css.ambientBlue} />
-              <span className={css.grain} />
+    <div className={css.root} data-team-action data-team-standalone={standalone || undefined}>
+      {!standalone && (
+        <button
+          type="button"
+          className={css.trigger}
+          aria-expanded={open}
+          onClick={() => {
+            const next = !open
+            setOpen(next)
+            if (next) void refresh()
+          }}
+        >
+          <IconUserOutline16 size={14} />
+          <span>{t('trigger')}</span>
+          {teammates.length > 0 && <span className={css.count}>{teammates.length}</span>}
+        </button>
+      )}
+      {open && (
+        <motion.div
+          className={css.panel}
+          role={standalone ? 'main' : 'dialog'}
+          aria-modal={standalone ? undefined : 'true'}
+          aria-label={t('trigger')}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={revealTransition}
+        >
+          <div className={ambientPaused ? `${css.ambient} ${css.ambientPaused}` : css.ambient} aria-hidden="true">
+            <span className={css.ambientOrange} />
+            <span className={css.ambientBlue} />
+            <span className={css.grain} />
+          </div>
+          <header className={css.workspaceHeader}>
+            <div className={css.workspaceHeading}>
+              <span className={css.eyebrow}>{t('workspaceEyebrow')}</span>
+              <h2>{t('workspaceTitle')}</h2>
+              <p>{t('workspaceSubtitle')}</p>
             </div>
-            <header className={css.workspaceHeader}>
-              <div className={css.workspaceHeading}>
-                <span className={css.eyebrow}>{t('workspaceEyebrow')}</span>
-                <h2>{t('workspaceTitle')}</h2>
-                <p>{t('workspaceSubtitle')}</p>
-              </div>
-              <div className={css.sessionBadge}>
-                <StateDot state="ongoing" />
-                <span>{t('activeSession')}</span>
-              </div>
+            <div className={css.sessionBadge}>
+              <StateDot state="ongoing" />
+              <span>{t('activeSession')}</span>
+            </div>
+            {(!standalone || !reduceMotion) && (
               <div className={css.toolbar}>
-                <button type="button" className={css.iconButton} aria-label={t('refresh')} onClick={() => { void refresh() }}>
-                  <IconRefreshOutline14 />
-                </button>
-                <button type="button" className={css.iconButton} aria-label={t('close')} onClick={() => { setOpen(false) }}>
-                  <IconCloseOutline16 size={14} />
-                </button>
+                {standalone
+                  ? (
+                    <button
+                      type="button"
+                      className={css.iconButton}
+                      aria-label={t(ambientPaused ? 'resumeMotion' : 'pauseMotion')}
+                      aria-pressed={ambientPaused}
+                      onClick={() => { setAmbientPaused(value => !value) }}
+                    >
+                      {ambientPaused ? <IconPlayOutline16 size={14} /> : <IconPauseOutline16 size={14} />}
+                    </button>
+                  )
+                  : (
+                    <>
+                      <button type="button" className={css.iconButton} aria-label={t('refresh')} onClick={() => { void refresh() }}>
+                        <IconRefreshOutline14 />
+                      </button>
+                      <button type="button" className={css.iconButton} aria-label={t('close')} onClick={() => { setOpen(false) }}>
+                        <IconCloseOutline16 size={14} />
+                      </button>
+                    </>
+                  )}
               </div>
-            </header>
-            <div className={css.workspaceBody}>
-              {error !== null && <div className={css.error} role="alert">{error}</div>}
-              {loading && view === null && <div className={css.loading}>{t('loading')}</div>}
-              {view !== null && (
-                <>
-                  <section className={css.rosterSection} aria-labelledby="agent-team-roster-heading">
-                    <div className={css.sectionIntro}>
-                      <span className={css.sectionRule} />
-                      <h3 id="agent-team-roster-heading">{t('roster')}</h3>
-                      <span className={css.sectionRule} />
-                    </div>
-                    <LayoutGroup id={`agent-team-${sessionId}`}>
-                      <div className={css.roster} role="list">
-                        {view.members.map((member, index) => {
-                          const active = member.id === activeMemberId
-                          const assigned = view.tasks.filter(task => task.ownerName === member.name)
-                          const canOpen = member.role === 'teammate'
+            )}
+          </header>
+          <div className={css.workspaceBody}>
+            {error !== null && <div className={css.error} role="alert">{error}</div>}
+            {loading && view === null && <div className={css.loading}>{t('loading')}</div>}
+            {view !== null && (
+              <>
+                <section className={css.rosterSection} aria-labelledby="agent-team-roster-heading">
+                  <div className={css.sectionIntro}>
+                    <span className={css.sectionRule} />
+                    <h3 id="agent-team-roster-heading">{t('roster')}</h3>
+                    <span className={css.sectionRule} />
+                  </div>
+                  <LayoutGroup id={`agent-team-${sessionId}`}>
+                    <div className={css.roster} role="list">
+                      {view.members.map((member, index) => {
+                        const active = member.id === activeMemberId
+                        const assigned = view.tasks.filter(task => task.ownerName === member.name)
+                        const canOpen = member.role === 'teammate'
                             && member.status !== 'failed'
                             && member.status !== 'provisioning'
-                          return (
-                            <motion.div
-                              layout
-                              key={member.id}
-                              role="listitem"
-                              data-team-member-card={member.id}
-                              data-expanded={active ? 'true' : 'false'}
-                              className={active ? `${css.memberCard} ${css.memberCardActive}` : css.memberCard}
-                              transition={{ layout: layoutTransition }}
-                              onPointerEnter={(event) => {
-                                if (event.pointerType === 'mouse') setActiveMemberId(member.id)
+                        const accessibleLabel = [
+                          member.name,
+                          t(memberStatusKey(member.status)),
+                          member.model === undefined ? '' : `${t('model')}: ${member.model}`,
+                          ...member.diagnostics,
+                        ].join('')
+                        return (
+                          <motion.div
+                            layout
+                            key={member.id}
+                            role="listitem"
+                            data-team-member-card={member.id}
+                            data-expanded={active ? 'true' : 'false'}
+                            className={active ? `${css.memberCard} ${css.memberCardActive}` : css.memberCard}
+                            transition={{ layout: layoutTransition }}
+                            onPointerEnter={(event) => {
+                              if (event.pointerType === 'mouse') setActiveMemberId(member.id)
+                            }}
+                            onPointerLeave={(event) => {
+                              if (event.pointerType === 'mouse') setActiveMemberId(null)
+                            }}
+                            onFocusCapture={() => { setActiveMemberId(member.id) }}
+                            onBlurCapture={() => { setActiveMemberId(null) }}
+                          >
+                            <button
+                              type="button"
+                              className={css.memberButton}
+                              aria-label={accessibleLabel}
+                              disabled={!canOpen}
+                              title={canOpen ? t('open') : undefined}
+                              onClick={() => {
+                                void openTeammate(sessionId, member).catch((reason: unknown) => { setError(String(reason)) })
                               }}
-                              onPointerLeave={(event) => {
-                                if (event.pointerType === 'mouse') setActiveMemberId(null)
-                              }}
-                              onFocusCapture={() => { setActiveMemberId(member.id) }}
-                              onBlurCapture={() => { setActiveMemberId(null) }}
                             >
-                              <button
-                                type="button"
-                                className={css.memberButton}
-                                disabled={!canOpen}
-                                title={canOpen ? t('open') : undefined}
-                                onClick={() => {
-                                  void openTeammate(sessionId, member).catch((reason: unknown) => { setError(String(reason)) })
+                              <span className={css.memberTopline}>
+                                <span className={css.roleLabel}>{t(member.role === 'lead' ? 'leadRole' : 'teammateRole')}</span>
+                                <span className={css.memberState}>
+                                  <StateDot state={member.status === 'running' ? 'ongoing' : member.status === 'failed' ? 'error' : 'done'} />
+                                  {t(memberStatusKey(member.status))}
+                                </span>
+                              </span>
+                              <span className={`${css.memberGlyph} ${css[`memberGlyph${String(index % 4)}`]}`} aria-hidden="true">
+                                <IconUserOutline16 size={44} />
+                              </span>
+                              <span className={css.memberText}>
+                                <strong>{member.name}</strong>
+                                {member.model !== undefined && <small>{t('model')}: {member.model}</small>}
+                                {member.diagnostics.map(diagnostic => (
+                                  <small key={diagnostic} className={css.diagnostic}>{diagnostic}</small>
+                                ))}
+                              </span>
+                              <AnimatePresence initial={false}>
+                                {active && (
+                                  <motion.span
+                                    className={css.memberDetails}
+                                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(8px)' }}
+                                    animate={{ opacity: 1, transform: 'translateY(0)' }}
+                                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(5px)' }}
+                                    transition={revealTransition}
+                                  >
+                                    <span className={css.detailLabel}>{t('assignedTasks')}</span>
+                                    <span className={css.detailValue}>
+                                      {assigned.length === 0 ? t('noAssignedTasks') : assigned.map(task => task.subject).join(' · ')}
+                                    </span>
+                                  </motion.span>
+                                )}
+                              </AnimatePresence>
+                              <span className={css.cardIndex}>{String(index + 1).padStart(2, '0')}</span>
+                            </button>
+                          </motion.div>
+                        )
+                      })}
+                      {Array.from({ length: Math.max(0, 4 - view.members.length) }, (_, index) => (
+                        <motion.div layout key={`open-seat-${String(index)}`} role="listitem" className={`${css.memberCard} ${css.openSeat}`} transition={{ layout: layoutTransition }}>
+                          <span className={css.roleLabel}>{t('teammateRole')}</span>
+                          <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
+                          <span>{t('openSeat')}</span>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </LayoutGroup>
+                </section>
+                <section className={css.taskDock} aria-labelledby="agent-team-tasks-heading">
+                  <div className={css.sectionTitle}>
+                    <div>
+                      <span className={css.eyebrow}>{t('liveState')}</span>
+                      <h3 id="agent-team-tasks-heading">{t('tasks')}</h3>
+                    </div>
+                    <button type="button" className={css.smallButton} onClick={() => { setCreating(true) }}>
+                      <IconPlusOutline16 size={13} /> {t('create')}
+                    </button>
+                  </div>
+                  {creating && (
+                    <TaskForm
+                      draft={createDraft}
+                      setDraft={setCreateDraft}
+                      pending={pendingTasks.has('create')}
+                      onSave={() => { void submitCreate() }}
+                      onCancel={() => { setCreating(false) }}
+                      t={t}
+                    />
+                  )}
+                  {view.tasks.length === 0 && !creating && <div className={css.notice}>{t('empty')}</div>}
+                  <div className={css.tasks}>
+                    {view.tasks.map(task => editing === task.id
+                      ? (
+                        <TaskForm
+                          key={task.id}
+                          draft={editDraft}
+                          setDraft={setEditDraft}
+                          pending={pendingTasks.has(task.id)}
+                          onSave={() => { void submitEdit(task) }}
+                          onCancel={() => { setEditing(null) }}
+                          t={t}
+                        />
+                      )
+                      : (
+                        <article key={task.id} className={css.task}>
+                          <div className={css.taskTitle}>
+                            <strong>{task.subject}</strong>
+                            <span>{t(statusKey(task.status))}</span>
+                          </div>
+                          <p>{task.description}</p>
+                          <div className={css.meta}>
+                            <span>{task.id}</span>
+                            {task.status === 'pending' && <span>{task.ready ? t('ready') : t('blocked')}</span>}
+                            {task.blockedBy.length > 0 && <span>{t('blockedBy')}: {task.blockedBy.join(', ')}</span>}
+                            {task.writeScopes.length > 0 && <span>{t('writeScopes')}: {task.writeScopes.join(', ')}</span>}
+                            {task.writeScopeWarnings.map(warning => <span key={warning} className={css.warning}>{warning}</span>)}
+                          </div>
+                          <div className={css.taskActions}>
+                            <label>
+                              {t('owner')}
+                              <select
+                                value={task.ownerName ?? ''}
+                                disabled={pendingTasks.has(task.id) || task.status === 'completed'}
+                                onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                                  const owner = event.target.value
+                                  void settleTask(task.id, () => updateTask(sessionId, {
+                                    taskId: task.id,
+                                    expectedRevision: task.revision,
+                                    action: 'reassign',
+                                    ...owner === '' ? {} : { owner },
+                                  }))
                                 }}
                               >
-                                <span className={css.memberTopline}>
-                                  <span className={css.roleLabel}>{t(member.role === 'lead' ? 'leadRole' : 'teammateRole')}</span>
-                                  <span className={css.memberState}>
-                                    <StateDot state={member.status === 'running' ? 'ongoing' : member.status === 'failed' ? 'error' : 'done'} />
-                                    {t(memberStatusKey(member.status))}
-                                  </span>
-                                </span>
-                                <span className={`${css.memberGlyph} ${css[`memberGlyph${String(index % 4)}`]}`} aria-hidden="true">
-                                  <IconUserOutline16 size={44} />
-                                </span>
-                                <span className={css.memberText}>
-                                  <strong>{member.name}</strong>
-                                  {member.model !== undefined && <small>{t('model')}: {member.model}</small>}
-                                </span>
-                                <AnimatePresence initial={false}>
-                                  {active && (
-                                    <motion.span
-                                      className={css.memberDetails}
-                                      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(8px)' }}
-                                      animate={{ opacity: 1, transform: 'translateY(0)' }}
-                                      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(5px)' }}
-                                      transition={revealTransition}
-                                    >
-                                      <span className={css.detailLabel}>{t('assignedTasks')}</span>
-                                      <span className={css.detailValue}>
-                                        {assigned.length === 0 ? t('noAssignedTasks') : assigned.map(task => task.subject).join(' · ')}
-                                      </span>
-                                      {member.diagnostics.map(diagnostic => <small key={diagnostic} className={css.diagnostic}>{diagnostic}</small>)}
-                                    </motion.span>
-                                  )}
-                                </AnimatePresence>
-                                <span className={css.cardIndex}>{String(index + 1).padStart(2, '0')}</span>
-                              </button>
-                            </motion.div>
-                          )
-                        })}
-                        {Array.from({ length: Math.max(0, 4 - view.members.length) }, (_, index) => (
-                          <motion.div layout key={`open-seat-${String(index)}`} role="listitem" className={`${css.memberCard} ${css.openSeat}`} transition={{ layout: layoutTransition }}>
-                            <span className={css.roleLabel}>{t('teammateRole')}</span>
-                            <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
-                            <span>{t('openSeat')}</span>
-                          </motion.div>
-                        ))}
-                      </div>
-                    </LayoutGroup>
-                  </section>
-                  <section className={css.taskDock} aria-labelledby="agent-team-tasks-heading">
-                    <div className={css.sectionTitle}>
-                      <div>
-                        <span className={css.eyebrow}>{t('liveState')}</span>
-                        <h3 id="agent-team-tasks-heading">{t('tasks')}</h3>
-                      </div>
-                      <button type="button" className={css.smallButton} onClick={() => { setCreating(true) }}>
-                        <IconPlusOutline16 size={13} /> {t('create')}
-                      </button>
-                    </div>
-                    {creating && (
-                      <TaskForm
-                        draft={createDraft}
-                        setDraft={setCreateDraft}
-                        pending={pendingTasks.has('create')}
-                        onSave={() => { void submitCreate() }}
-                        onCancel={() => { setCreating(false) }}
-                        t={t}
-                      />
-                    )}
-                    {view.tasks.length === 0 && !creating && <div className={css.notice}>{t('empty')}</div>}
-                    <div className={css.tasks}>
-                      {view.tasks.map(task => editing === task.id
-                        ? (
-                          <TaskForm
-                            key={task.id}
-                            draft={editDraft}
-                            setDraft={setEditDraft}
-                            pending={pendingTasks.has(task.id)}
-                            onSave={() => { void submitEdit(task) }}
-                            onCancel={() => { setEditing(null) }}
-                            t={t}
-                          />
-                        )
-                        : (
-                          <article key={task.id} className={css.task}>
-                            <div className={css.taskTitle}>
-                              <strong>{task.subject}</strong>
-                              <span>{t(statusKey(task.status))}</span>
-                            </div>
-                            <p>{task.description}</p>
-                            <div className={css.meta}>
-                              <span>{task.id}</span>
-                              {task.status === 'pending' && <span>{task.ready ? t('ready') : t('blocked')}</span>}
-                              {task.blockedBy.length > 0 && <span>{t('blockedBy')}: {task.blockedBy.join(', ')}</span>}
-                              {task.writeScopes.length > 0 && <span>{t('writeScopes')}: {task.writeScopes.join(', ')}</span>}
-                              {task.writeScopeWarnings.map(warning => <span key={warning} className={css.warning}>{warning}</span>)}
-                            </div>
-                            <div className={css.taskActions}>
-                              <label>
-                                {t('owner')}
-                                <select
-                                  value={task.ownerName ?? ''}
-                                  disabled={pendingTasks.has(task.id) || task.status === 'completed'}
-                                  onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                                    const owner = event.target.value
-                                    void settleTask(task.id, () => updateTask(sessionId, {
-                                      taskId: task.id,
-                                      expectedRevision: task.revision,
-                                      action: 'reassign',
-                                      ...owner === '' ? {} : { owner },
-                                    }))
-                                  }}
-                                >
-                                  <option value="">{t('unowned')}</option>
-                                  {assignable.map(member => <option key={member.id} value={member.name}>{member.name}</option>)}
-                                </select>
-                              </label>
-                              <button type="button" onClick={() => { startEdit(task) }} disabled={pendingTasks.has(task.id)}>
-                                <IconEditOutline16 size={13} /> {t('edit')}
-                              </button>
-                              {task.status === 'in_progress' && (
-                                <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => {
-                                  void settleTask(task.id, () => updateTask(sessionId, {
-                                    taskId: task.id, expectedRevision: task.revision, action: 'complete',
-                                  }))
-                                }}><IconCheckOutline14 /> {t('complete')}</button>
-                              )}
-                              {task.status === 'completed' && (
-                                <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => {
-                                  void settleTask(task.id, () => updateTask(sessionId, {
-                                    taskId: task.id, expectedRevision: task.revision, action: 'reopen',
-                                  }))
-                                }}>{t('reopen')}</button>
-                              )}
+                                <option value="">{t('unowned')}</option>
+                                {assignable.map(member => <option key={member.id} value={member.name}>{member.name}</option>)}
+                              </select>
+                            </label>
+                            <button type="button" onClick={() => { startEdit(task) }} disabled={pendingTasks.has(task.id)}>
+                              <IconEditOutline16 size={13} /> {t('edit')}
+                            </button>
+                            {task.status === 'in_progress' && (
                               <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => {
                                 void settleTask(task.id, () => updateTask(sessionId, {
-                                  taskId: task.id, expectedRevision: task.revision, action: 'delete',
+                                  taskId: task.id, expectedRevision: task.revision, action: 'complete',
                                 }))
-                              }}><IconTrashOutline16 size={13} /> {t('delete')}</button>
-                            </div>
-                          </article>
-                        ))}
-                    </div>
-                  </section>
-                  <footer className={css.workspaceFooter}>
-                    <span><StateDot state="ongoing" /> {t('liveState')}</span>
-                    <span>{view.members.length} {t('membersMetric')}</span>
-                    <span>{view.tasks.length} {t('tasksMetric')}</span>
-                  </footer>
-                </>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                              }}><IconCheckOutline14 /> {t('complete')}</button>
+                            )}
+                            {task.status === 'completed' && (
+                              <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => {
+                                void settleTask(task.id, () => updateTask(sessionId, {
+                                  taskId: task.id, expectedRevision: task.revision, action: 'reopen',
+                                }))
+                              }}>{t('reopen')}</button>
+                            )}
+                            <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => {
+                              void settleTask(task.id, () => updateTask(sessionId, {
+                                taskId: task.id, expectedRevision: task.revision, action: 'delete',
+                              }))
+                            }}><IconTrashOutline16 size={13} /> {t('delete')}</button>
+                          </div>
+                        </article>
+                      ))}
+                  </div>
+                </section>
+                <footer className={css.workspaceFooter}>
+                  <span><StateDot state="ongoing" /> {t('liveState')}</span>
+                  <span>{view.members.length} {t('membersMetric')}</span>
+                  <span>{view.tasks.length} {t('tasksMetric')}</span>
+                </footer>
+              </>
+            )}
+          </div>
+        </motion.div>
+      )}
     </div>
   )
 }
