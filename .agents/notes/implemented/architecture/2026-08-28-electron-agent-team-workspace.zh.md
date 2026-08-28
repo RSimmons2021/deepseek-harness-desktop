@@ -12,13 +12,15 @@ Agent Teams 已有权威 Host service 与浏览器 projection，但紧凑的 con
 
 [`TeamAction`](../../../../packages/experimental/client-ui-agent-team/src/client/TeamAction.tsx) 在普通 Web build 中继续作为 conversation-header slot contribution，同时也提供 desktop root 使用的实时 Team surface。两种形式都由既有 `agentTeams/view`、`agentTeams/createTask` 与 `agentTeams/updateTask` Remote method 驱动。真实 member 占据玻璃质感 roster card；未使用容量显示为不可交互的开放席位。Mouse hover 与键盘 focus 会选择一个 card。被选中的 card 由 CSS 直接动画自身的 `flex-grow`，sibling 通过普通 layout 让出宽度，变宽的 card 会在过程中重新换行。Grow、8 像素抬升、surface 色调、border 与投影一起以参考设计的过冲曲线在 600ms 内落定；变宽后露出的顶部高光与已分配任务区块在 400ms 内跟进。参考设计中的高饱和橘色与蓝色 ambient field 只通过缓慢、低振幅的 compositor transform 移动；reduced-motion 会冻结它们。Touch 不合成 hover，reduced-motion 也会移除 card 空间动画，状态变化会同步移除过期 Session 内容。
 
-Electron 在任何页面加载前会向 renderer user agent 追加 `DeepSeekHarnessDesktop` 标记。Layout plugin 使用这个 assembly-time 标记注册最小化 [`DesktopFrame`](../../../../packages/client/ui-layout/src/client/DesktopFrame.tsx)，而不是浏览器 `AppFrame`。该 frame 保留 stock child-slot declaration，使普通 Client plugin 可以激活，但只渲染 `desktop.root` seat。Agent Teams Client 占据该 seat，选择现有 Session 或创建一个 Session，并立即挂载 Team Alpha workspace。浏览器 sidebar、conversation hero、settings onboarding 与 testing notice 均不会被渲染，而不是在首次绘制后再隐藏。
+Electron 在任何页面加载前会向 renderer user agent 追加 `DeepSeekHarnessDesktop` 标记。Layout plugin 使用这个 assembly-time 标记注册最小化 [`DesktopFrame`](../../../../packages/client/ui-layout/src/client/DesktopFrame.tsx)，而不是浏览器 `AppFrame`。该 frame 把窗口拆分为该 seat 与普通 conversation column，并在其旁渲染 frame 级 overlay layer，使桌面既保留 Team workspace 作为主surface，也能与 agent 对话。Team surface 在浏览器中是 dialog，在这里是 column，因此在 `standalone` 下其 panel 在宿主列内正常流动，而不再覆盖整个视口。Sidebar 与 details slot 仍保持声明以便普通 Client plugin 激活，但没有组件渲染它们。Agent Teams Client 占据该 seat，选择现有 Session 或创建一个 Session，并立即挂载 Team Alpha workspace。浏览器 sidebar、conversation hero、settings onboarding 与 testing notice 均不会被渲染，而不是在首次绘制后再隐藏。
 
 [`@deepseek-ai/dsh-desktop`](../../../../apps/desktop/README.zh.md) 是专用 Electron application，负责通过应用自有 desktop profile 运行构建后的 `dsh` entry。该 profile 组合 base、Web、Agent Teams Host 与 Agent Teams Web bundle，使 profile module fallback 拥有所有 plugin dependency。Harness loader 需要 internal module-loader seam，而 Electron embedded Node 不会公开它，因此 child 使用 system Node executable 运行。Child 绑定操作系统选择的 loopback port，main process 等待 authenticated readiness URL 后再加载。Desktop Harness state 位于 Electron 的 per-user application-data directory 下；`DSH_DESKTOP_WORKSPACE` 可以选择 working directory，`DSH_DESKTOP_NODE` 可以选择 Node executable。
 
 BrowserWindow 启用 context isolation 与 Chromium sandbox、禁用 Node integration、不提供 preload bridge，并且除了 sanitized clipboard write 以外不授予浏览器 permission。Navigation 保持在 authenticated Harness origin。新窗口会被拒绝，外部 HTTP link 在操作系统浏览器中打开。关闭应用会终止受监管的 Harness process。Window icon 使用从 DeepSeek 官方 DeepSeek-LLM logo asset 中提取的鲸鱼标志。
 
 Root `pnpm desktop` command 构建 Harness library 与 Web frontend、构建 Electron entry，然后启动 desktop host。Electron 不进入 root workspace library build，因为它是 product host，而不是 plugin package。
+
+Team 调色板是固定值而非主题派生，因此与受主题控制的 chrome 并排时表现为恒暗 surface。桌面 host 通过 `nativeTheme.themeSource` 请求暗色 renderer；macOS 与 Windows 会将其带入 `prefers-color-scheme`，Linux 不会，因此在 Linux 上 conversation column 会跟随桌面会话，直到在应用设置中显式设置主题偏好。
 
 ## 边界
 

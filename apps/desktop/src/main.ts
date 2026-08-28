@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 
 const DESKTOP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const REPOSITORY_ROOT = resolve(DESKTOP_ROOT, '../..')
@@ -185,6 +185,14 @@ function startHarness(): Promise<string> {
 }
 
 function createWindow(): BrowserWindow {
+  // The window paints a dark ground and the boot page is dark, so the renderer
+  // should resolve `prefers-color-scheme` the same way: the shipped theme
+  // preference is `system`, and a light host puts a light conversation column
+  // beside the always-dark Team workspace. This sets `shouldUseDarkColors`, and
+  // macOS and Windows carry it into the renderer; on Linux it does not reach
+  // `prefers-color-scheme`, so the surface there still follows the desktop
+  // session until the theme preference is set explicitly in app settings.
+  nativeTheme.themeSource = 'dark'
   const window = new BrowserWindow({
     width: 1440,
     height: 960,

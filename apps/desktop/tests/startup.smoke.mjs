@@ -40,8 +40,19 @@ try {
     throw error
   }
   assert.match(await page.evaluate(() => navigator.userAgent), /DeepSeekHarnessDesktop/u)
+  await page.locator('[data-shell-overlay]').waitFor({ timeout: 30_000 })
+  // The conversation column mounts in its hero state until a workspace is
+  // chosen, so assert the surface and its composer seat rather than an input.
+  await page.locator('[data-conversation-scroll]').waitFor({ timeout: 60_000 })
+  const composerSeat = page.locator('[data-composer-seat]')
+  await composerSeat.waitFor({ timeout: 60_000 })
+  const conversationWidth = (await page.locator('[data-slot="conversation"] > *').first().boundingBox())?.width ?? 0
+  assert.ok(conversationWidth > 200, `conversation column collapsed to ${String(conversationWidth)}px`)
+  // Scope to the Team roster: the conversation column beside it also renders
+  // list items, so a page-wide listitem locator no longer names a roster card.
+  const roster = page.locator('[data-team-action] [role="list"]').first()
   const member = page.locator('[data-team-member-card]').first()
-  const secondCard = page.locator('[role="listitem"]').nth(1)
+  const secondCard = roster.locator('[role="listitem"]').nth(1)
   await member.waitFor({ timeout: 30_000 })
   const beforeMember = await member.boundingBox()
   const beforeSecond = await secondCard.boundingBox()
