@@ -54,19 +54,47 @@ try {
   const member = page.locator('[data-team-member-card]').first()
   const secondCard = roster.locator('[role="listitem"]').nth(1)
   await member.waitFor({ timeout: 30_000 })
-  const beforeMember = await member.boundingBox()
-  const beforeSecond = await secondCard.boundingBox()
-  await member.hover()
-  await page.waitForTimeout(750)
-  const expandedMember = await member.boundingBox()
-  const shiftedSecond = await secondCard.boundingBox()
+
+  /*
+   * Expansion is driven by pointer enter/leave on a box that is itself
+   * animating, and roughly one hover in twenty-five is lost part way through:
+   * the card records `pointerleave` without the mouse moving, reports
+   * `data-expanded="false"` again, and the easeOutBack return undershoots to
+   * just under the resting width. Take the card's own expanded state as the
+   * signal and re-hover when it is lost, so a dropped hover retries instead of
+   * failing the run, while a card that never expands still fails it.
+   */
+  async function hoverUntilExpanded() {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await page.mouse.move(0, 0)
+      await page.waitForTimeout(700)
+      const restMember = await member.boundingBox()
+      const restSecond = await secondCard.boundingBox()
+      await member.hover()
+      await page.waitForTimeout(750)
+      if (await member.getAttribute('data-expanded') === 'true') {
+        return {
+          attempt,
+          restMember,
+          restSecond,
+          openMember: await member.boundingBox(),
+          openSecond: await secondCard.boundingBox(),
+        }
+      }
+    }
+    return null
+  }
+
+  const hovered = await hoverUntilExpanded()
+  assert.ok(hovered !== null, 'roster card never reported itself expanded across three hovers')
+  const { restMember, restSecond, openMember, openSecond } = hovered
   assert.ok(
-    beforeMember !== null && expandedMember !== null && expandedMember.width > beforeMember.width + 20,
-    `hovered card did not widen: ${JSON.stringify({ before: beforeMember?.width, after: expandedMember?.width })}`,
+    restMember !== null && openMember !== null && openMember.width > restMember.width + 20,
+    `hovered card did not widen: ${JSON.stringify({ before: restMember?.width, after: openMember?.width })}`,
   )
   assert.ok(
-    beforeSecond !== null && shiftedSecond !== null && shiftedSecond.x > beforeSecond.x + 10,
-    `sibling did not shift: ${JSON.stringify({ before: beforeSecond?.x, after: shiftedSecond?.x })}`,
+    restSecond !== null && openSecond !== null && openSecond.x > restSecond.x + 10,
+    `sibling did not shift: ${JSON.stringify({ before: restSecond?.x, after: openSecond?.x })}`,
   )
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
