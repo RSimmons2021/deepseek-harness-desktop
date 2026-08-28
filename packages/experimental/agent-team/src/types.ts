@@ -139,6 +139,10 @@ export interface Config {
   readonly maxMessageBytes?: number
   /** Maximum milliseconds allowed for Team-owned runtime disposal. */
   readonly disposalTimeoutMs?: number
+  /** Continuable-subagent provider that starts fresh teammates. */
+  readonly freshProvider?: string
+  /** Continuable-subagent provider that starts completed-prefix fork teammates. */
+  readonly forkProvider?: string
 }
 
 /** Input for creating one durable teammate. */
@@ -208,6 +212,29 @@ export type TeamTaskMutationResult =
     readonly ok: false
     readonly error: {
       readonly code: 'team-task-conflict' | 'team-rejected'
+      readonly message: string
+    }
+  }
+
+/**
+ * Browser-supplied spawn input. A Remote request carries no `AbortSignal`, and
+ * the provider is a deployment choice the service resolves from the requested
+ * context mode rather than a value a caller may pick.
+ */
+export interface RemoteSpawnTeammateRequest {
+  readonly name: string
+  readonly description: string
+  readonly prompt: string
+  readonly context: 'fresh' | 'fork'
+}
+
+/** Outcome of one Remote spawn, preserving Team rejections as business values. */
+export type TeamSpawnMutationResult =
+  | { readonly ok: true; readonly value: SpawnTeammateResult }
+  | {
+    readonly ok: false
+    readonly error: {
+      readonly code: 'team-rejected'
       readonly message: string
     }
   }

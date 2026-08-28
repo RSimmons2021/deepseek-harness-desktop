@@ -84,6 +84,21 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
       ok: true,
       value: { ok: true, value: { ...task, revision: 2 } },
     }),
+    spawnTeammate: () => Promise.resolve({
+      ok: true,
+      value: {
+        ok: true,
+        value: {
+          member: {
+            id: 'writer-id' as SessionId,
+            name: 'writer',
+            role: 'teammate',
+            status: 'provisioning',
+            diagnostics: [],
+          },
+        },
+      },
+    }),
     interrupt: () => Promise.resolve({
       ok: true,
       value: { ok: true, value: { previousStatus: 'running' } },
@@ -154,6 +169,53 @@ describe('TeamAction', () => {
     fireEvent.click(stop)
     await waitFor(() => { expect(interrupt).toHaveBeenCalledWith(SESSION, 'worker') })
     await waitFor(() => { expect(load).toHaveBeenCalledTimes(2) })
+  })
+
+  it('spawns a teammate from the first open seat and reloads the roster', async () => {
+    const load = vi.fn(() => Promise.resolve({ ok: true as const, value: view }))
+    const spawnTeammate = vi.fn(() => Promise.resolve({
+      ok: true as const,
+      value: {
+        ok: true as const,
+        value: {
+          member: {
+            id: 'writer-id' as SessionId,
+            name: 'writer',
+            role: 'teammate' as const,
+            status: 'provisioning' as const,
+            diagnostics: [],
+          },
+        },
+      },
+    }))
+    render(<TeamAction {...props(actions({ load, spawnTeammate }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+
+    const add = await screen.findByRole('button', { name: new RegExp(zh.addTeammate, 'u') })
+    fireEvent.click(add)
+    fireEvent.change(screen.getByPlaceholderText(zh.teammateName), { target: { value: 'writer' } })
+    fireEvent.change(screen.getByPlaceholderText(zh.teammateDescription), { target: { value: 'drafts copy' } })
+    fireEvent.change(screen.getByPlaceholderText(zh.teammatePrompt), { target: { value: 'draft the release note' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
+
+    await waitFor(() => {
+      expect(spawnTeammate).toHaveBeenCalledWith(SESSION, {
+        name: 'writer',
+        description: 'drafts copy',
+        prompt: 'draft the release note',
+        context: 'fresh',
+      })
+    })
+    await waitFor(() => { expect(load).toHaveBeenCalledTimes(2) })
+  })
+
+  it('keeps the spawn control on only the first open seat', async () => {
+    render(<TeamAction {...props(actions())} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByRole('button', { name: /worker/u })
+    expect(screen.getAllByRole('button', { name: new RegExp(zh.addTeammate, 'u') })).toHaveLength(1)
+    // Two members and four seats leaves one addable seat plus one inert seat.
+    expect(screen.getAllByText(zh.openSeat)).toHaveLength(1)
   })
 
   it('offers no interrupt for a teammate that is not running', async () => {

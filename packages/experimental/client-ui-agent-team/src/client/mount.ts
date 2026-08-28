@@ -58,6 +58,9 @@ function registerUi(ctx: ClientContext): void {
         ...owner === undefined ? {} : { owner },
       })
     },
+    async spawnTeammate(sessionId, request) {
+      return await ctx.remote.agentTeams.spawnTeammate(leadSessionId(sessionId), request)
+    },
     async interrupt(sessionId, targetName) {
       return await ctx.remote.agentTeams.interrupt(leadSessionId(sessionId), targetName)
     },

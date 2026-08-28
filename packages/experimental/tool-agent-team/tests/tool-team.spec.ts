@@ -392,10 +392,10 @@ describe('dsh-tool-team', () => {
     expect(renderPrompt(assembled)).not.toContain('Your Team role is lead')
   })
 
-  it('resolves direct-apply defaults without Loader schema normalization', async () => {
+  it('installs Team tools on direct apply without the Loader', async () => {
     const { ctx, lead, fiber } = await setup([textResponse('ordinary child')])
     await fiber.dispose()
-    toolTeam.apply(ctx, {})
+    toolTeam.apply(ctx)
     expect((await assembly(ctx, lead)).tools.map(schema => schema.name).filter(name => TOOL_NAMES.includes(name)).sort())
       .toEqual(TOOL_NAMES)
     const ordinary = await ctx.subagents.startContinuable({
@@ -439,11 +439,12 @@ describe('dsh-tool-team', () => {
     expect(toolTeam.inject).toEqual(['agents', 'agentTeams', 'tools', 'systemPrompt'])
   })
 
-  it('uses configured fresh and fork provider names', async () => {
+  it('spawns through the provider the Team service resolves for the context mode', async () => {
     const { ctx, lead, fiber } = await setup([textResponse('custom')])
     await fiber.dispose()
     await ctx.plugin(SubagentSpawn, { providerName: 'team-fresh' })
-    await ctx.plugin(toolTeam, { freshProvider: 'team-fresh', forkProvider: 'fork' })
+    vi.spyOn(ctx.agentTeams, 'providerFor').mockReturnValue('team-fresh')
+    await ctx.plugin(toolTeam)
     const result = await execute(ctx, lead, 'spawn_teammate', {
       name: 'custom-provider', description: 'custom provider', prompt: 'go',
     })

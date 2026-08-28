@@ -14,19 +14,18 @@ export const name = 'tool-agent-team'
 /** Services required by the Team tool plugin. */
 export const inject = ['agents', 'agentTeams', 'tools', 'systemPrompt']
 
-/** Tool routing configuration. */
-export interface Config {
-  /** Continuable-subagent provider used for fresh teammates. */
-  readonly freshProvider?: string
-  /** Continuable-subagent provider used for completed-prefix fork teammates. */
-  readonly forkProvider?: string
-}
+/**
+ * Tool routing configuration.
+ *
+ * The teammate providers are not here: they are a Team-wide deployment choice
+ * owned by `dsh-experimental-agent-team`, which the spawn tool reads through
+ * `ctx.agentTeams.providerFor` so the browser Remote and the model-facing tool
+ * cannot disagree about what a context mode spawns through.
+ */
+export interface Config {}
 
 /** Loader schema for the opt-in Team tool plugin. */
-export const Config: z<Config> = z.object({
-  freshProvider: z.string().default('spawn'),
-  forkProvider: z.string().default('fork'),
-})
+export const Config: z<Config> = z.object({})
 
 /** Model-facing collaboration guidance shared by Lead and teammates. */
 const POLICY = `Agent Teams is available in this session, but create teammates only when the user explicitly asks to use Agent Teams or teammates.
@@ -157,7 +156,7 @@ function callingAgent(agent: Agent | undefined, toolName: string): Agent {
 }
 
 /** Register the complete Team tool set in one exact Agent scope. */
-function install(agent: Agent, ctx: Context, config: Required<Config>): () => void {
+function install(agent: Agent, ctx: Context): () => void {
   const scoped = agent.ctx
   const disposers: Array<() => unknown> = []
   const register = (disposer: () => unknown): void => { disposers.push(disposer) }
@@ -193,7 +192,7 @@ function install(agent: Agent, ctx: Context, config: Required<Config>): () => vo
           description: args.description,
           prompt: [{ type: 'text', text: args.prompt }],
           context,
-          provider: context === 'fork' ? config.forkProvider : config.freshProvider,
+          provider: ctx.agentTeams.providerFor(context),
           signal: exec.signal,
         })
       },
@@ -396,15 +395,11 @@ function install(agent: Agent, ctx: Context, config: Required<Config>): () => vo
 }
 
 /** Install Team tools in every live or subsequently published Team member scope. */
-export function apply(ctx: Context, config: Config = {}): void {
-  const resolved: Required<Config> = {
-    freshProvider: config.freshProvider ?? 'spawn',
-    forkProvider: config.forkProvider ?? 'fork',
-  }
+export function apply(ctx: Context): void {
   const installed = new Map<Agent, () => void>()
   const maybeInstall = (agent: Agent): void => {
     if (installed.has(agent) || ctx.agentTeams.tryMembership(agent) === undefined) return
-    installed.set(agent, install(agent, ctx, resolved))
+    installed.set(agent, install(agent, ctx))
   }
   for (const agent of ctx.agents.list()) maybeInstall(agent)
   ctx.on('agent/created', ({ agent }) => { maybeInstall(agent) })

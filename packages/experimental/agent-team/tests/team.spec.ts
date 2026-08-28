@@ -897,6 +897,36 @@ describe('Team Remote API', () => {
     await expect(ctx.agentTeams.remoteUpdateTask(lead, request)).rejects.toThrow('unexpected mutation failure')
   })
 
+  it('spawns through the configured provider and preserves spawn rejections', async () => {
+    const { ctx, lead } = await setup([])
+    const spawn = vi.spyOn(ctx.agentTeams, 'spawnTeammate')
+      .mockResolvedValueOnce({ member: { id: lead.session.id, name: 'writer', role: 'teammate', status: 'idle', diagnostics: [] } })
+      .mockRejectedValueOnce(new TeamError('name taken', 'TEAM_MEMBER_NAME_TAKEN'))
+      .mockRejectedValueOnce(new Error('unexpected spawn failure'))
+    const request = { name: 'writer', description: 'drafts', prompt: 'go', context: 'fork' as const }
+
+    await expect(ctx.agentTeams.remoteSpawnTeammate(lead, request)).resolves.toMatchObject({
+      ok: true,
+      value: { member: { name: 'writer' } },
+    })
+    expect(spawn).toHaveBeenCalledWith(lead, expect.objectContaining({
+      prompt: [{ type: 'text', text: 'go' }],
+      provider: 'fork',
+      signal: expect.any(AbortSignal),
+    }))
+    await expect(ctx.agentTeams.remoteSpawnTeammate(lead, request)).resolves.toEqual({
+      ok: false,
+      error: { code: 'team-rejected', message: 'name taken' },
+    })
+    await expect(ctx.agentTeams.remoteSpawnTeammate(lead, request)).rejects.toThrow('unexpected spawn failure')
+  })
+
+  it('resolves each context mode to its configured provider', async () => {
+    const { ctx } = await setup([])
+    expect(ctx.agentTeams.providerFor('fresh')).toBe('spawn')
+    expect(ctx.agentTeams.providerFor('fork')).toBe('fork')
+  })
+
   it('reports the pre-interrupt status and preserves interrupt rejections', async () => {
     const { ctx, lead } = await setup([])
     vi.spyOn(ctx.agentTeams, 'interrupt')

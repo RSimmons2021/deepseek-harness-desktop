@@ -49,7 +49,6 @@ export function DesktopTeamRoot({ ensureSession, ...props }: DesktopTeamRootProp
       <div className={`${css.ambient} ${css.ambientPaused}`} aria-hidden="true">
         <span className={css.ambientOrange} />
         <span className={css.ambientBlue} />
-        <span className={css.grain} />
       </div>
       <header className={css.workspaceHeader}>
         <div className={css.workspaceHeading}>

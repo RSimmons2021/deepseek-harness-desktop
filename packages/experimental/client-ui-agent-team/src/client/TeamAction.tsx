@@ -4,7 +4,9 @@ import {
 } from 'motion/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
+  RemoteSpawnTeammateRequest,
   TeamMemberView as TeamRosterMember,
+  TeamSpawnMutationResult,
   TeamInterruptMutationResult,
   TeamTaskAction,
   TeamTaskId,
@@ -33,6 +35,9 @@ export type TeamTaskActionResult = RemoteResult<TeamTaskMutationResult>
 /** Generated Remote result whose business value preserves Team interrupt rejections. */
 export type TeamInterruptActionResult = RemoteResult<TeamInterruptMutationResult>
 
+/** Generated Remote result whose business value preserves Team spawn rejections. */
+export type TeamSpawnActionResult = RemoteResult<TeamSpawnMutationResult>
+
 /** Business actions injected by the browser plugin. */
 export interface TeamActionInjected {
   load: (sessionId: SessionId) => Promise<TeamActionResult<TeamView>>
@@ -52,6 +57,10 @@ export interface TeamActionInjected {
     writeScopes?: string[]
     owner?: string
   }) => Promise<TeamTaskActionResult>
+  spawnTeammate: (
+    sessionId: SessionId,
+    request: RemoteSpawnTeammateRequest,
+  ) => Promise<TeamSpawnActionResult>
   interrupt: (sessionId: SessionId, targetName: string) => Promise<TeamInterruptActionResult>
   /**
    * Hold one bounded wait for the next Team change. The surface calls this in a
@@ -69,7 +78,8 @@ export type TeamActionProps =
 /** Props shared by the header action and the desktop-owned workspace surface. */
 export type TeamSurfaceProps = Pick<
   TeamActionProps,
-  'sessionId' | 'load' | 'createTask' | 'updateTask' | 'interrupt' | 'waitForChange' | 'openTeammate' | 't'
+  | 'sessionId' | 'load' | 'createTask' | 'updateTask' | 'spawnTeammate'
+  | 'interrupt' | 'waitForChange' | 'openTeammate' | 't'
 > & {
   /** Keep the designed Team workspace mounted as the application surface. */
   standalone?: boolean
@@ -83,6 +93,16 @@ interface Draft {
 }
 
 const EMPTY_DRAFT: Draft = { subject: '', description: '', blockers: '', scopes: '' }
+
+/** Open-seat spawn form state. The provider is absent: the service resolves it from the context mode. */
+interface SpawnDraft {
+  name: string
+  description: string
+  prompt: string
+  context: 'fresh' | 'fork'
+}
+
+const EMPTY_SPAWN: SpawnDraft = { name: '', description: '', prompt: '', context: 'fresh' }
 
 function items(value: string): string[] {
   return [...new Set(value.split(',').map(item => item.trim()).filter(Boolean))]
@@ -118,7 +138,8 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
-  sessionId, load, createTask, updateTask, interrupt, waitForChange, openTeammate, t, standalone = false,
+  sessionId, load, createTask, updateTask, spawnTeammate, interrupt, waitForChange,
+  openTeammate, t, standalone = false,
 }: TeamSurfaceProps) {
   const [open, setOpen] = useState(standalone)
   const [loading, setLoading] = useState(false)
@@ -131,6 +152,9 @@ export function TeamAction({
   const [pendingTasks, setPendingTasks] = useState<ReadonlySet<string>>(() => new Set())
   const [activeMemberId, setActiveMemberId] = useState<SessionId | null>(null)
   const [ambientPaused, setAmbientPaused] = useState(false)
+  const [spawning, setSpawning] = useState(false)
+  const [spawnDraft, setSpawnDraft] = useState<SpawnDraft>(EMPTY_SPAWN)
+  const [spawnPending, setSpawnPending] = useState(false)
   const reduceMotion = useReducedMotion()
   const sessionRef = useRef(sessionId)
   const refreshGeneration = useRef(0)
@@ -148,6 +172,9 @@ export function TeamAction({
     setEditDraft(EMPTY_DRAFT)
     setPendingTasks(new Set())
     setActiveMemberId(null)
+    setSpawning(false)
+    setSpawnDraft(EMPTY_SPAWN)
+    setSpawnPending(false)
   }, [sessionId, standalone])
 
   useEffect(() => {
@@ -212,6 +239,34 @@ export function TeamAction({
     void follow()
     return () => { stopped = true }
   }, [open, refresh, sessionId, waitForChange])
+
+  const submitSpawn = useCallback(async (): Promise<void> => {
+    const requestedSession = sessionId
+    setSpawnPending(true)
+    try {
+      const result = await spawnTeammate(requestedSession, {
+        name: spawnDraft.name.trim(),
+        description: spawnDraft.description.trim(),
+        prompt: spawnDraft.prompt.trim(),
+        context: spawnDraft.context,
+      })
+      if (sessionRef.current !== requestedSession) return
+      if (!result.ok) {
+        setError(failureText(result.error))
+        return
+      }
+      if (!result.value.ok) {
+        setError(failureText(result.value.error))
+        return
+      }
+      setError(null)
+      setSpawning(false)
+      setSpawnDraft(EMPTY_SPAWN)
+      await refresh()
+    } finally {
+      if (sessionRef.current === requestedSession) setSpawnPending(false)
+    }
+  }, [refresh, sessionId, spawnDraft, spawnTeammate])
 
   const stopTeammate = useCallback(async (targetName: string): Promise<void> => {
     const requestedSession = sessionId
@@ -377,7 +432,6 @@ export function TeamAction({
           >
             <span className={css.ambientOrange} />
             <span className={css.ambientBlue} />
-            <span className={css.grain} />
           </div>
           <header className={css.workspaceHeader}>
             <div className={css.workspaceHeading}>
@@ -515,15 +569,44 @@ export function TeamAction({
                         </div>
                       )
                     })}
-                    {Array.from({ length: Math.max(0, 4 - view.members.length) }, (_, index) => (
-                      <div key={`open-seat-${String(index)}`} role="listitem" className={`${css.memberCard} ${css.openSeat}`}>
-                        <span className={css.openSeatBody}>
-                          <span className={css.roleLabel}>{t('teammateRole')}</span>
-                          <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
-                          <span>{t('openSeat')}</span>
-                        </span>
-                      </div>
-                    ))}
+                    {Array.from({ length: Math.max(0, 4 - view.members.length) }, (_, index) => {
+                      // Only the first free seat takes a new teammate; the rest
+                      // stay inert so the row still reads as remaining capacity.
+                      const addable = index === 0
+                      return (
+                        <div key={`open-seat-${String(index)}`} role="listitem" className={`${css.memberCard} ${css.openSeat}`}>
+                          {addable && spawning && (
+                            <SpawnForm
+                              draft={spawnDraft}
+                              setDraft={setSpawnDraft}
+                              pending={spawnPending}
+                              onSave={() => { void submitSpawn() }}
+                              onCancel={() => { setSpawning(false); setSpawnDraft(EMPTY_SPAWN) }}
+                              t={t}
+                            />
+                          )}
+                          {addable && !spawning && (
+                            <button
+                              type="button"
+                              className={css.openSeatAdd}
+                              data-team-add-teammate
+                              onClick={() => { setSpawning(true) }}
+                            >
+                              <span className={css.roleLabel}>{t('teammateRole')}</span>
+                              <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
+                              <span>{t('addTeammate')}</span>
+                            </button>
+                          )}
+                          {!addable && (
+                            <span className={css.openSeatBody}>
+                              <span className={css.roleLabel}>{t('teammateRole')}</span>
+                              <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
+                              <span>{t('openSeat')}</span>
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </section>
                 <section className={css.taskDock} aria-labelledby="agent-team-tasks-heading">
@@ -642,6 +725,53 @@ interface TaskFormProps {
   onSave: () => void
   onCancel: () => void
   t: TeamActionProps['t']
+}
+
+interface SpawnFormProps {
+  draft: SpawnDraft
+  setDraft: (draft: SpawnDraft) => void
+  pending: boolean
+  onSave: () => void
+  onCancel: () => void
+  t: TeamSurfaceProps['t']
+}
+
+/** Open-seat form that turns remaining capacity into one durable teammate. */
+function SpawnForm({ draft, setDraft, pending, onSave, onCancel, t }: SpawnFormProps) {
+  const incomplete = draft.name.trim() === '' || draft.description.trim() === '' || draft.prompt.trim() === ''
+  return (
+    <div className={`${css.form} ${css.spawnForm}`}>
+      <input
+        value={draft.name}
+        placeholder={t('teammateName')}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, name: event.target.value }) }}
+      />
+      <input
+        value={draft.description}
+        placeholder={t('teammateDescription')}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, description: event.target.value }) }}
+      />
+      <textarea
+        value={draft.prompt}
+        placeholder={t('teammatePrompt')}
+        onChange={(event: ChangeEvent<HTMLTextAreaElement>) => { setDraft({ ...draft, prompt: event.target.value }) }}
+      />
+      <select
+        value={draft.context}
+        aria-label={t('teammatePrompt')}
+        onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+          setDraft({ ...draft, context: event.target.value === 'fork' ? 'fork' : 'fresh' })
+        }}
+      >
+        <option value="fresh">{t('contextFresh')}</option>
+        <option value="fork">{t('contextFork')}</option>
+      </select>
+      <div className={css.formActions}>
+        <button type="button" disabled={pending || incomplete} onClick={onSave}>{t('spawn')}</button>
+        <button type="button" disabled={pending} onClick={onCancel}>{t('cancel')}</button>
+      </div>
+    </div>
+  )
 }
 
 function TaskForm({ draft, setDraft, pending, onSave, onCancel, t }: TaskFormProps) {

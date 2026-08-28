@@ -22,7 +22,9 @@ import type {
   SpawnTeammateRequest,
   SpawnTeammateResult,
   TeamMemberView,
+  RemoteSpawnTeammateRequest,
   TeamInterruptMutationResult,
+  TeamSpawnMutationResult,
   TeamTaskMutationResult,
   TeamTaskView,
   TeamView,
@@ -47,6 +49,8 @@ const DEFAULT_MAX_TASKS = 256
 const DEFAULT_MAX_PENDING_MESSAGES = 64
 const DEFAULT_MAX_MESSAGE_BYTES = 65_536
 const DEFAULT_DISPOSAL_TIMEOUT_MS = 5_000
+const DEFAULT_FRESH_PROVIDER = 'spawn'
+const DEFAULT_FORK_PROVIDER = 'fork'
 
 /** Validate one positive safe-integer deployment limit. */
 function positiveLimit(name: string, value: number): number {
@@ -66,6 +70,8 @@ export class TeamService extends TypertRemoteService {
     maxPendingMessagesPerMember: z.number().step(1).min(1).default(DEFAULT_MAX_PENDING_MESSAGES),
     maxMessageBytes: z.number().step(1).min(1).default(DEFAULT_MAX_MESSAGE_BYTES),
     disposalTimeoutMs: z.number().step(1).min(1).default(DEFAULT_DISPOSAL_TIMEOUT_MS),
+    freshProvider: z.string().default(DEFAULT_FRESH_PROVIDER),
+    forkProvider: z.string().default(DEFAULT_FORK_PROVIDER),
   })
 
   /** Validated deployment limits used by every Team operation. */
@@ -92,6 +98,8 @@ export class TeamService extends TypertRemoteService {
         'disposalTimeoutMs',
         config.disposalTimeoutMs ?? DEFAULT_DISPOSAL_TIMEOUT_MS,
       ),
+      freshProvider: config.freshProvider ?? DEFAULT_FRESH_PROVIDER,
+      forkProvider: config.forkProvider ?? DEFAULT_FORK_PROVIDER,
     }
 
     this.activity = new TeamActivity()
@@ -134,6 +142,19 @@ export class TeamService extends TypertRemoteService {
    */
   listMembers(agent: Agent): TeamMemberView[] {
     return this.roster.list(this.roster.membership(agent))
+  }
+
+  /**
+   * Resolve the continuable-subagent provider one context mode spawns through.
+   *
+   * The provider is a deployment choice, so it has one home here beside the
+   * other Team limits: the model-facing tool and the browser Remote both read
+   * it rather than each carrying its own copy.
+   * @param context - requested teammate context mode.
+   * @returns the configured provider name for that mode.
+   */
+  providerFor(context: 'fresh' | 'fork'): string {
+    return context === 'fork' ? this.config.forkProvider : this.config.freshProvider
   }
 
   /**
@@ -259,6 +280,39 @@ export class TeamService extends TypertRemoteService {
   @Remote('updateTask')
   remoteUpdateTask(agent: Agent, request: UpdateTeamTaskRequest): Promise<TeamTaskMutationResult> {
     return this.taskMutationResult(this.updateTask(agent, request))
+  }
+
+  /**
+   * Create one durable teammate through the generated Remote API.
+   *
+   * The request carries no provider or cancellation: the service resolves the
+   * provider from the requested context mode, and the spawn runs to its durable
+   * active or failed edge rather than following a caller's signal.
+   * @param agent - exact live Lead Agent creating the teammate.
+   * @param request - immutable name, description, opening prompt, and context mode.
+   * @returns the active roster row, or a typed Team rejection.
+   */
+  @Remote('spawnTeammate')
+  async remoteSpawnTeammate(
+    agent: Agent,
+    request: RemoteSpawnTeammateRequest,
+  ): Promise<TeamSpawnMutationResult> {
+    try {
+      return {
+        ok: true,
+        value: await this.spawnTeammate(agent, {
+          name: request.name,
+          description: request.description,
+          prompt: [{ type: 'text', text: request.prompt }],
+          context: request.context,
+          provider: this.providerFor(request.context),
+          signal: new AbortController().signal,
+        }),
+      }
+    } catch (error) {
+      if (!(error instanceof TeamError)) throw error
+      return { ok: false, error: { code: 'team-rejected', message: error.message } }
+    }
   }
 
   /**

@@ -33,20 +33,14 @@ kind: "package-reference"
 
 ### 最小工作示例
 
-对现有组合的最小增量是 [agent-team README](../agent-team/README.zh.md#smallest-working-setup) 中的两包片段：持久会话存储、团队领域包与本包。插件本身只有两个可选设置：
+对现有组合的最小增量是 [agent-team README](../agent-team/README.zh.md#smallest-working-setup) 中的两包片段：持久会话存储、团队领域包与本包。插件本身不接受设置：
 
 ```yaml
 - id: tool-agent-team
   name: '@deepseek-ai/dsh-experimental-tool-agent-team'
-  config:
-    freshProvider: spawn
-    forkProvider: fork
 ```
 
-| 字段 | 默认值 | 含义 |
-|---|---|---|
-| `freshProvider` | `spawn` | 启动 fresh teammate 的 provider |
-| `forkProvider` | `fork` | 启动 fork teammate 的 provider |
+Teammate provider 改为配置在 `agent-team` row 上。它们是 Team 范围的部署选择，spawn tool 通过 `ctx.agentTeams.providerFor` 读取请求的 context mode 所解析出的 provider，因此 model-facing tool 与浏览器 Remote 不会对 `fresh` 与 `fork` 的启动方式产生分歧。
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-experimental-tool-agent-team)是每个受支持字段及其 JSDoc 的穷尽式真源。
 

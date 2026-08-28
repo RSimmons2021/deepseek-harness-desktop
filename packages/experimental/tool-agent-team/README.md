@@ -33,20 +33,14 @@ Choose it when the model should create and coordinate teammates by itself rather
 
 ### Smallest working example
 
-The smallest addition to an existing composition is the two-package fragment from the [agent-team README](../agent-team/README.md#smallest-working-setup): durable session storage, the team domain package, and this package. The plugin itself takes two optional settings:
+The smallest addition to an existing composition is the two-package fragment from the [agent-team README](../agent-team/README.md#smallest-working-setup): durable session storage, the team domain package, and this package. The plugin takes no settings:
 
 ```yaml
 - id: tool-agent-team
   name: '@deepseek-ai/dsh-experimental-tool-agent-team'
-  config:
-    freshProvider: spawn
-    forkProvider: fork
 ```
 
-| Field | Default | Meaning |
-|---|---|---|
-| `freshProvider` | `spawn` | Provider that starts fresh teammates |
-| `forkProvider` | `fork` | Provider that starts fork teammates |
+The teammate providers are configured on the `agent-team` row instead. They are a Team-wide deployment choice, and the spawn tool reads the one the requested context mode resolves to through `ctx.agentTeams.providerFor`, so the model-facing tool and the browser Remote cannot disagree about what `fresh` and `fork` start.
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-experimental-tool-agent-team) is the exhaustive source for every accepted field and its JSDoc.
 
