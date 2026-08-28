@@ -12,6 +12,18 @@
   height: 100%;
   overflow: hidden;
   background: var(--dsw-alias-bg-base);
+
+  /*
+   * Reading scrim for the conversation column. A plain translucent fill rather
+   * than a backdrop blur: the ground behind it is a soft gradient with no
+   * high-frequency detail for a blur to resolve, and a full-column
+   * backdrop-filter costs a re-blend of the whole window every frame.
+   */
+  --dsh-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-00) 74%, transparent);
+}
+
+:global(body[data-ds-dark-theme]) .frame {
+  --dsh-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-1000) 42%, transparent);
 }
 
 .workspaceCol {
@@ -24,11 +36,17 @@
 }
 
 .conversationCol {
+  /* Declared seam on the conversation surface: it stops painting its opaque
+     base so the window ambient reads through this column, and the scrim above
+     carries the contrast the transcript needs instead. */
+  --dsh-conversation-surface: transparent;
+
   display: flex;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  border-left: 1px solid var(--dsw-alias-border-l1);
+  border-left: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 60%, transparent);
+  background: var(--dsh-desktop-chat-scrim);
   overflow: hidden;
 }
 
@@ -51,7 +69,7 @@
   }
 
   .conversationCol {
-    border-top: 1px solid var(--dsw-alias-border-l1);
+    border-top: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 60%, transparent);
     border-left: 0;
   }
 }

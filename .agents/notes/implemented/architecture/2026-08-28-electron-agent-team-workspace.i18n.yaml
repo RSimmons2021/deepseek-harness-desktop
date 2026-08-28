@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-28-electron-agent-team-workspace.md
-2026-08-28-electron-agent-team-workspace.md: 265014758a8ca9d95b8d39219cf8e69fa4a89d2d
-2026-08-28-electron-agent-team-workspace.zh.md: e69c81761f0c2c3aa2266378ffc7a538680467f0
+2026-08-28-electron-agent-team-workspace.md: 4a62e12010aa4e5fb34a860e62a6f0b9c153d9d1
+2026-08-28-electron-agent-team-workspace.zh.md: f4af0cd5ae0d798f3fa56a55b5976e3eaa6998f3

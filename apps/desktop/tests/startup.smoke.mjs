@@ -60,8 +60,14 @@ try {
   await page.waitForTimeout(750)
   const expandedMember = await member.boundingBox()
   const shiftedSecond = await secondCard.boundingBox()
-  assert.ok(beforeMember !== null && expandedMember !== null && expandedMember.width > beforeMember.width + 20)
-  assert.ok(beforeSecond !== null && shiftedSecond !== null && shiftedSecond.x > beforeSecond.x + 10)
+  assert.ok(
+    beforeMember !== null && expandedMember !== null && expandedMember.width > beforeMember.width + 20,
+    `hovered card did not widen: ${JSON.stringify({ before: beforeMember?.width, after: expandedMember?.width })}`,
+  )
+  assert.ok(
+    beforeSecond !== null && shiftedSecond !== null && shiftedSecond.x > beforeSecond.x + 10,
+    `sibling did not shift: ${JSON.stringify({ before: beforeSecond?.x, after: shiftedSecond?.x })}`,
+  )
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
   await page.evaluate(() => { window.scrollTo(0, 0) })

@@ -107,6 +107,7 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
     // first wait instead of reloading underneath the assertions.
     waitForChange: () => new Promise(() => {}),
     openTeammate: () => Promise.resolve(),
+    theme: { subscribe: () => () => {}, colorScheme: () => 'dark', toggle: () => {} },
     ...overrides,
   }
 }
@@ -216,6 +217,27 @@ describe('TeamAction', () => {
     expect(screen.getAllByRole('button', { name: new RegExp(zh.addTeammate, 'u') })).toHaveLength(1)
     // Two members and four seats leaves one addable seat plus one inert seat.
     expect(screen.getAllByText(zh.openSeat)).toHaveLength(1)
+  })
+
+  it('toggles appearance from the workspace toolbar and follows the resolved scheme', async () => {
+    let scheme: 'light' | 'dark' = 'dark'
+    let notify = (): void => {}
+    const toggle = vi.fn(() => {
+      scheme = scheme === 'dark' ? 'light' : 'dark'
+      notify()
+    })
+    const theme = {
+      subscribe: (onChange: () => void) => { notify = onChange; return () => { notify = () => {} } },
+      colorScheme: () => scheme,
+      toggle,
+    }
+    render(<TeamAction {...props(actions({ theme }))} standalone />)
+
+    // Dark offers the way back to light, and the label follows the new scheme.
+    const button = await screen.findByRole('button', { name: zh.toLightTheme })
+    fireEvent.click(button)
+    expect(toggle).toHaveBeenCalledTimes(1)
+    await screen.findByRole('button', { name: zh.toDarkTheme })
   })
 
   it('offers no interrupt for a teammate that is not running', async () => {

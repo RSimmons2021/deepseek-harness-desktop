@@ -655,6 +655,19 @@
   inset: auto;
 }
 
+/*
+ * As the application surface the ambient is the window's ground rather than
+ * this column's decoration, so it covers the viewport and every sibling column
+ * composes over it. `.panel` sets no transform, filter, or containment, so it
+ * is not a containing block for a fixed descendant and does not clip one; the
+ * negative layer still paints above `.panel`'s own background because a
+ * stacking context paints its background before its negative children.
+ */
+.root[data-team-standalone='true'] .ambient,
+.panel[data-team-desktop-root] .ambient {
+  position: fixed;
+}
+
 .openSeatMark {
   display: grid;
   width: 64px;

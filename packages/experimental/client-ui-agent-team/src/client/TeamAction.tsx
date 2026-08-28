@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent } from 'react'
 import {
   AnimatePresence, motion, useReducedMotion, type Transition,
 } from 'motion/react'
@@ -18,7 +18,8 @@ import type {
 import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
   IconCheckOutline14, IconCloseOutline16, IconEditOutline16, IconPlusOutline16,
-  IconPauseOutline16, IconPlayOutline16, IconRefreshOutline14, IconTrashOutline16,
+  IconDarkOutline16, IconLightOutline16, IconPauseOutline16, IconPlayOutline16,
+  IconRefreshOutline14, IconTrashOutline16,
   IconUserOutline16, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -38,8 +39,19 @@ export type TeamInterruptActionResult = RemoteResult<TeamInterruptMutationResult
 /** Generated Remote result whose business value preserves Team spawn rejections. */
 export type TeamSpawnActionResult = RemoteResult<TeamSpawnMutationResult>
 
+/** Appearance face the workspace toolbar reads and writes. */
+export interface TeamThemeFace {
+  /** Subscribe to theme changes; returns the unsubscribe. */
+  subscribe: (onChange: () => void) => () => void
+  /** The resolved scheme now in effect (`system` already resolved). */
+  colorScheme: () => 'light' | 'dark'
+  /** Write the opposite scheme as the durable preference. */
+  toggle: () => void
+}
+
 /** Business actions injected by the browser plugin. */
 export interface TeamActionInjected {
+  theme: TeamThemeFace
   load: (sessionId: SessionId) => Promise<TeamActionResult<TeamView>>
   createTask: (sessionId: SessionId, input: {
     subject: string
@@ -79,7 +91,7 @@ export type TeamActionProps =
 export type TeamSurfaceProps = Pick<
   TeamActionProps,
   | 'sessionId' | 'load' | 'createTask' | 'updateTask' | 'spawnTeammate'
-  | 'interrupt' | 'waitForChange' | 'openTeammate' | 't'
+  | 'interrupt' | 'waitForChange' | 'openTeammate' | 'theme' | 't'
 > & {
   /** Keep the designed Team workspace mounted as the application surface. */
   standalone?: boolean
@@ -139,8 +151,9 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
   sessionId, load, createTask, updateTask, spawnTeammate, interrupt, waitForChange,
-  openTeammate, t, standalone = false,
+  openTeammate, theme, t, standalone = false,
 }: TeamSurfaceProps) {
+  const colorScheme = useSyncExternalStore(theme.subscribe, theme.colorScheme)
   const [open, setOpen] = useState(standalone)
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<TeamView | null>(null)
@@ -447,15 +460,25 @@ export function TeamAction({
               <div className={css.toolbar}>
                 {standalone
                   ? (
-                    <button
-                      type="button"
-                      className={css.iconButton}
-                      aria-label={t(ambientPaused ? 'resumeMotion' : 'pauseMotion')}
-                      aria-pressed={ambientPaused}
-                      onClick={() => { setAmbientPaused(value => !value) }}
-                    >
-                      {ambientPaused ? <IconPlayOutline16 size={14} /> : <IconPauseOutline16 size={14} />}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className={css.iconButton}
+                        aria-label={t(colorScheme === 'dark' ? 'toLightTheme' : 'toDarkTheme')}
+                        onClick={() => { theme.toggle() }}
+                      >
+                        {colorScheme === 'dark' ? <IconLightOutline16 size={14} /> : <IconDarkOutline16 size={14} />}
+                      </button>
+                      <button
+                        type="button"
+                        className={css.iconButton}
+                        aria-label={t(ambientPaused ? 'resumeMotion' : 'pauseMotion')}
+                        aria-pressed={ambientPaused}
+                        onClick={() => { setAmbientPaused(value => !value) }}
+                      >
+                        {ambientPaused ? <IconPlayOutline16 size={14} /> : <IconPauseOutline16 size={14} />}
+                      </button>
+                    </>
                   )
                   : (
                     <>

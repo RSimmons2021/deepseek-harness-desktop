@@ -20,7 +20,7 @@ BrowserWindow 启用 context isolation 与 Chromium sandbox、禁用 Node integr
 
 Root `pnpm desktop` command 构建 Harness library 与 Web frontend、构建 Electron entry，然后启动 desktop host。Electron 不进入 root workspace library build，因为它是 product host，而不是 plugin package。
 
-Team 调色板跟随当前主题。Light 为基础，presenter 的 dark 属性整体替换它，但仅有四个锚点因主题而异：ground、ink、阴影权重与 ambient 强度。其余 Team token 均由它们派生，因此 stroke、card wash 与 sheen 会随主题变化，而不需要维护两套值。Ink 透明度是例外，按主题分别设定：在暗色上作为柔和标签的白色比例，放到浅色底上会失去对比，因此 light 使用更重的 muted、faint 与 stroke 值。桌面 host 同时通过 `nativeTheme.themeSource` 请求暗色 renderer；macOS 与 Windows 会将其带入 `prefers-color-scheme`，Linux 不会，因此在 Linux 上该 surface 会跟随桌面会话，直到在应用设置中显式设置主题偏好。
+Team 调色板跟随当前主题。Light 为基础，presenter 的 dark 属性整体替换它，但仅有四个锚点因主题而异：ground、ink、阴影权重与 ambient 强度。其余 Team token 均由它们派生，因此 stroke、card wash 与 sheen 会随主题变化，而不需要维护两套值。Ink 透明度是例外，按主题分别设定：在暗色上作为柔和标签的白色比例，放到浅色底上会失去对比，因此 light 使用更重的 muted、faint 与 stroke 值。作为应用 surface，ambient 是窗口的底色而非 workspace column 的装饰：它覆盖整个视口，conversation column 把 `--dsh-conversation-surface` 接缝设为 transparent 以让其透出，frame 则提供纯色半透明 scrim 保证对比度，而不使用会让窗口每帧重新混合的 backdrop blur。Workspace toolbar 在动画暂停按钮旁提供外观切换控件，它读取已解析的 scheme 并把相反值写为持久偏好，自身不持有主题状态。桌面 host 同时通过 `nativeTheme.themeSource` 请求暗色 renderer；macOS 与 Windows 会将其带入 `prefers-color-scheme`，Linux 不会，因此在 Linux 上该 surface 会跟随桌面会话，直到在应用设置中显式设置主题偏好。
 
 ## 边界
 

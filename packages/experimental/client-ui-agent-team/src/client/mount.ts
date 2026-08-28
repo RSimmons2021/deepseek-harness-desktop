@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
@@ -28,7 +29,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required browser services for RPC, navigation, slots, and localized copy. */
-export const inject = ['sessions', 'remote', 'slots', 'locale', 'uiSession']
+export const inject = ['sessions', 'remote', 'slots', 'locale', 'uiSession', 'theme']
 
 function isDesktopSurface(): boolean {
   if (typeof window === 'undefined') return false
@@ -44,7 +45,19 @@ function registerUi(ctx: ClientContext): void {
     return address?.parentSessionId ?? sessionId
   }
 
+  // Appearance face for the workspace toolbar. The runtime owns the preference
+  // and its persistence; this only reads the resolved scheme and writes the
+  // opposite one, so the control never invents a third source of theme state.
+  const theme = {
+    subscribe: (onChange: () => void): (() => void) => ctx.on('theme/change', () => { onChange() }),
+    colorScheme: (): 'light' | 'dark' => ctx.theme.getTheme().active.colorScheme,
+    toggle: (): void => {
+      ctx.theme.setTheme(ctx.theme.getTheme().active.colorScheme === 'dark' ? 'light' : 'dark')
+    },
+  }
+
   const actions: TeamActionInjected = {
+    theme,
     async load(sessionId): Promise<TeamActionResult<TeamView>> {
       return await ctx.remote.agentTeams.view(leadSessionId(sessionId))
     },
@@ -118,7 +131,7 @@ export async function mountAgentTeamUi(
   contribution: TypertRemoteContribution,
 ): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(contribution)
-  const ui = ctx.inject(['sessions', 'remote.agentTeams', 'slots', 'locale'], registerUi)
+  const ui = ctx.inject(['sessions', 'remote.agentTeams', 'slots', 'locale', 'theme'], registerUi)
   try {
     await ui
   } catch (error) {

@@ -4,7 +4,11 @@
   flex-direction: column;
   height: 100%;
   min-width: 0;
-  background: var(--dsw-alias-bg-base);
+  /* Declared seam for a host that paints its own ground behind this column:
+     the desktop frame sets `--dsh-conversation-surface: transparent` so its
+     window-wide ambient shows through, and supplies its own scrim for reading
+     contrast. Unset, the column paints the ordinary opaque base. */
+  background: var(--dsh-conversation-surface, var(--dsw-alias-bg-base));
 
   /* Shared width axis for the whole column: one content width W
      (--dsh-chat-content-width) for the transcript, the dock cards
