@@ -40,15 +40,28 @@
 }
 
 .panel {
-  --team-ink: var(--dsw-static-neutral-00);
-  --team-ink-muted: color-mix(in srgb, var(--team-ink) 58%, transparent);
-  --team-ink-faint: color-mix(in srgb, var(--team-ink) 34%, transparent);
+  /*
+   * Light is the base and the dark rule below swaps it whole, keyed to the
+   * attribute the ThemePresenter writes. Only the ground, the ink, the shadow
+   * weights, and the ambient strength differ per theme: every other team token
+   * derives from those, so strokes, card washes, and the sheen follow a theme
+   * change without a second set of values to keep in step.
+   */
+  --team-ink: var(--dsw-static-neutral-900);
+  --team-navy: color-mix(in oklab, var(--dsw-static-blue-50) 74%, var(--dsw-static-neutral-00));
+  --team-surface: color-mix(in srgb, var(--dsw-static-neutral-00) 58%, transparent);
+  --team-surface-strong: color-mix(in srgb, var(--dsw-static-neutral-00) 80%, transparent);
+  --team-shadow: color-mix(in srgb, var(--dsw-static-neutral-1000) 10%, transparent);
+  --team-shadow-strong: color-mix(in srgb, var(--dsw-static-neutral-1000) 18%, transparent);
+  /* The ambient fields are a wash on light and the room's light source on dark. */
+  --team-ambient-orange: 0.3;
+  --team-ambient-blue: 0.24;
+
+  --team-ink-muted: color-mix(in srgb, var(--team-ink) 72%, transparent);
+  --team-ink-faint: color-mix(in srgb, var(--team-ink) 52%, transparent);
   --team-orange: #ff7924;
   --team-blue: var(--dsw-static-blue-500);
-  --team-navy: color-mix(in oklab, var(--dsw-static-blue-950) 60%, var(--dsw-static-neutral-1000));
-  --team-surface: color-mix(in srgb, var(--dsw-static-blue-950) 34%, transparent);
-  --team-surface-strong: color-mix(in srgb, var(--dsw-static-blue-950) 52%, transparent);
-  --team-stroke: color-mix(in srgb, var(--team-ink) 13%, transparent);
+  --team-stroke: color-mix(in srgb, var(--team-ink) 16%, transparent);
   --team-stroke-strong: color-mix(in srgb, var(--team-orange) 52%, transparent);
   --team-danger: var(--dsw-static-red-400);
   /* Card opening choreography: the card's own geometry and surface settle on
@@ -71,6 +84,20 @@
   background: var(--team-navy);
   color: var(--team-ink);
   isolation: isolate;
+}
+
+:global(body[data-ds-dark-theme]) .panel {
+  --team-ink: var(--dsw-static-neutral-00);
+  --team-navy: color-mix(in oklab, var(--dsw-static-blue-950) 60%, var(--dsw-static-neutral-1000));
+  --team-surface: color-mix(in srgb, var(--dsw-static-blue-950) 34%, transparent);
+  --team-surface-strong: color-mix(in srgb, var(--dsw-static-blue-950) 52%, transparent);
+  --team-shadow: color-mix(in srgb, var(--dsw-static-neutral-1000) 25%, transparent);
+  --team-shadow-strong: color-mix(in srgb, var(--dsw-static-neutral-1000) 40%, transparent);
+  --team-ambient-orange: 0.82;
+  --team-ambient-blue: 0.72;
+  --team-ink-muted: color-mix(in srgb, var(--team-ink) 58%, transparent);
+  --team-ink-faint: color-mix(in srgb, var(--team-ink) 34%, transparent);
+  --team-stroke: color-mix(in srgb, var(--team-ink) 13%, transparent);
 }
 
 .ambient,
@@ -100,7 +127,7 @@
     rgb(255 105 24 / 62%) 34%,
     transparent 72%
   );
-  opacity: 0.82;
+  opacity: var(--team-ambient-orange);
   transform: translate3d(0, 0, 0) rotate(-13deg) scale(1);
   animation: ambient-orange 24s ease-in-out infinite alternate;
   will-change: transform;
@@ -129,7 +156,7 @@
   height: 78vh;
   border-radius: 50%;
   background: radial-gradient(circle, color-mix(in srgb, var(--team-blue) 67%, transparent), transparent 70%);
-  opacity: 0.72;
+  opacity: var(--team-ambient-blue);
   transform: translate3d(0, 0, 0) rotate(12deg);
   animation: ambient-blue 29s ease-in-out infinite alternate;
   will-change: transform;
@@ -321,7 +348,7 @@
     color-mix(in srgb, var(--team-surface) 78%, transparent);
   box-shadow:
     inset 0 1px color-mix(in srgb, var(--team-ink) 11%, transparent),
-    0 28px 70px color-mix(in srgb, var(--dsw-static-neutral-1000) 25%, transparent);
+    0 28px 70px var(--team-shadow);
   backdrop-filter: blur(26px) saturate(122%);
   transform-origin: center;
   transition:
@@ -361,7 +388,7 @@
   border-color: var(--team-stroke-strong);
   box-shadow:
     inset 0 1px color-mix(in srgb, var(--team-ink) 11%, transparent),
-    0 30px 60px color-mix(in srgb, var(--dsw-static-neutral-1000) 40%, transparent);
+    0 30px 60px var(--team-shadow-strong);
   transform: translateY(-8px);
 }
 

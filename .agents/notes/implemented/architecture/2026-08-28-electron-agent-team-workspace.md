@@ -20,7 +20,7 @@ The BrowserWindow has context isolation and Chromium sandboxing enabled, Node in
 
 The root `pnpm desktop` command builds the Harness libraries and Web frontend, builds the Electron entry, and launches the desktop host. Electron remains outside the root workspace library build because it is a product host rather than a plugin package.
 
-The Team palette is fixed rather than theme-derived, so beside themed chrome it reads as an always-dark surface. The desktop host asks for a dark renderer through `nativeTheme.themeSource`; macOS and Windows carry that into `prefers-color-scheme`, Linux does not, so on Linux the conversation column follows the desktop session until the theme preference is set in app settings.
+The Team palette follows the active theme. Light is the base and the presenter's dark attribute swaps it whole, but only four anchors differ — the ground, the ink, the shadow weight, and the ambient strength. Every other Team token derives from those, so strokes, card washes, and the sheen change with the theme rather than being maintained twice. The ink alphas are the exception and are set per theme: the fraction that reads as a soft label in white-on-dark washes out against a light ground, so light carries heavier muted, faint, and stroke values. The desktop host also asks for a dark renderer through `nativeTheme.themeSource`; macOS and Windows carry that into `prefers-color-scheme`, Linux does not, so on Linux the surface follows the desktop session until the theme preference is set in app settings.
 
 ## Boundaries
 
