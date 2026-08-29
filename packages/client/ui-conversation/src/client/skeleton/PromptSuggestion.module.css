@@ -1,0 +1,32 @@
+/* Chips wrap under the composer and share its content width. */
+.row {
+  display: flex;
+  width: 100%;
+  max-width: var(--dsh-composer-card-max-width);
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px auto 0;
+  padding: 0 var(--dsh-composer-side-clearance);
+}
+
+.chip {
+  padding: 7px 14px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 100px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.chip:hover {
+  border-color: var(--dsw-alias-border-l4);
+  color: var(--dsw-alias-label-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip { transition: none; }
+}

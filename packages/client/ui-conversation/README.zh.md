@@ -11,6 +11,14 @@ kind: "package-reference"
 
 `ui-conversation` 拥有与 target 无关的 Conversation 组装和共享浏览器 shell。它消费 Session Controller 的 `SessionEventLikeEntry` feed，通过 `ctx.uiConversation` 暴露不依赖 React 的 registry 与逐 Session binding，并通过 `ctx.uiSession` 提供 `useConversation`、`useInput` 和 `inputActions` 标准 props。它还拥有按会话的持久化图片 URL 缓存：`ctx.uiConversation.imageUrl(sessionId, attachment)` 为每个附件解析一个经会话授权的浏览器 URL，并随 Session binding 释放而撤销，因此所有 Conversation target 共享一次 `session.attachment` 读取。Chat 等具体 target 位于独立 package，由各自 package 注册 Definition、snapshot builder、View 和 renderer。
 
+### 起始提示与回到最新
+
+Hero 提供四条起始提示 chip。选中其一只会填充草稿而不发送，因此提示仍可编辑，也不会在未点击发送时离开。只要 Session 能够保存草稿，它们就会出现在 hero 中，包括尚未选择工作区时：chip 会填充草稿，待工作区设定后即可发送。
+
+在 transcript 可见时，有一个控件可以把读者带回最新消息。它从 scrollport 自行读取可见性，并在 transcript 已接近底部时隐藏，因此固定在底部的列不会多出额外 chrome。
+
+两者均改编自 [prompt-kit](https://www.prompt-kit.com)——基于 Tailwind 的 shadcn/ui 组件，而本 client 并不使用 Tailwind——因此它们是针对同一公开契约的重新实现：以 CSS module 与主题 token 取代 utility class，并使用 dictionary 文案而非字面量。
+
 ### 由宿主绘制的底色
 
 该列绘制 `--dsh-conversation-surface`，缺省回退到普通的不透明 base。若宿主自行在该列背后绘制底色 —— 例如 ambient 覆盖整个窗口的桌面 frame —— 就把它设为 `transparent` 并自备阅读用 scrim。不设置时行为不变。

@@ -3,6 +3,8 @@
 // no-session/session transitions — the bar renders inert via owner props.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { PromptSuggestion } from './PromptSuggestion.tsx'
+import { ScrollButton } from './ScrollButton.tsx'
 import clsx from 'clsx'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { ConversationSlotProps, InputZone } from '../contract/slots.ts'
@@ -130,9 +132,13 @@ function WidthHandle(props: {
 
 export function ConversationRoot({
   sessionId, useSession, useSessions, useSessionPendingInteraction,
-  useWorkspaces, useConversation, useInput, useComposerBlock,
+  useWorkspaces, useConversation, useInput, useComposerBlock, inputActions,
   renderSlot, renderSlotChain, selectWorkspace, t,
 }: ConversationRootProps) {
+  // The scroll container is handed to the return-to-latest control, which
+  // reads its own visibility off the scrollport rather than lifting scroll
+  // state into this component.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
   const session = useSession(s => s)
   const pendingInteraction = useSessionPendingInteraction(snapshot =>
     sessionId === undefined ? undefined : snapshot.get(sessionId))
@@ -378,10 +384,14 @@ export function ConversationRoot({
   return (
     <div ref={rootResizeRef} className={css.root} data-phase={phase}>
       {sessionId === undefined ? null : renderSlot('conversation.session.header', {})}
-      <div className={css.scrollBody} data-conversation-scroll="">
+      <div ref={setScroller} className={css.scrollBody} data-conversation-scroll="">
         {sessionId === undefined ? null : renderSlot('conversation.session', {})}
         {composerSeat}
+        {phase === 'hero' && (
+          <PromptSuggestion t={t} setDraft={inputActions?.setDraft.bind(inputActions)} />
+        )}
       </div>
+      {phase === 'active' && <ScrollButton scroller={scroller} t={t} />}
       {/* Width handles only while a transcript is on screen; the hero has no
           content column to size. */}
       {phase === 'active' && (['left', 'right'] as const).map(side => (
