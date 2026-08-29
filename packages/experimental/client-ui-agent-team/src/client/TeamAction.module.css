@@ -64,6 +64,11 @@
   --team-stroke: color-mix(in srgb, var(--team-ink) 16%, transparent);
   --team-stroke-strong: color-mix(in srgb, var(--team-orange) 52%, transparent);
   --team-danger: var(--dsw-static-red-400);
+  /* Shimmer stops for this surface: the muted ink is the resting colour and the
+     full ink is the travelling highlight, so the sweep stays inside the Team
+     palette in both themes. */
+  --dsh-shimmer-base: var(--team-ink-faint);
+  --dsh-shimmer-highlight: var(--team-ink);
   /* Card opening choreography: the card's own geometry and surface settle on
      one overshooting curve, and whatever the widened card uncovers follows on
      the shorter linear-in curve. */

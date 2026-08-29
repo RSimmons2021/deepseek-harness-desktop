@@ -1,0 +1,32 @@
+/*
+ * The sweep is a gradient clipped to the glyphs. Base and highlight are both
+ * opaque stops, so the text stays legible at every point of the animation and
+ * reads as the base colour alone when motion is off.
+ */
+.shimmer {
+  display: inline-block;
+  background-image: linear-gradient(
+    90deg,
+    var(--dsh-shimmer-base, currentcolor) calc(50% - var(--dsh-shimmer-spread, 120px)),
+    var(--dsh-shimmer-highlight, var(--dsw-alias-label-primary)),
+    var(--dsh-shimmer-base, currentcolor) calc(50% + var(--dsh-shimmer-spread, 120px))
+  );
+  background-clip: text;
+  background-repeat: no-repeat;
+  background-size: 250% 100%;
+  animation: dsh-text-shimmer var(--dsh-shimmer-duration, 4s) linear infinite;
+  -webkit-text-fill-color: transparent;
+}
+
+@keyframes dsh-text-shimmer {
+  from { background-position: 150% center; }
+  to { background-position: -50% center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    background-image: none;
+    animation: none;
+    -webkit-text-fill-color: currentcolor;
+  }
+}

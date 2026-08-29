@@ -33,7 +33,7 @@ kind: "package-reference"
 
 ### 管理任务板
 
-Workspace 打开期间会保持一个有界 `agentTeams/waitForChange` 调用，在每次观察到变化时重新加载整个 view 并重新进入等待；transport failure 会结束该循环，并把手动刷新留作退路。作为桌面 surface，workspace toolbar 还在动画暂停按钮旁提供外观切换控件：它从 theme runtime 读取已解析的 scheme，并把相反的值写为持久偏好，因此不会成为第二个主题状态来源。运行中的 teammate card 在 card button 旁边显示中断控件 —— 绝不放在其内部，因为 card button 本身就是打开 teammate 的目标，而 button 不能嵌套。
+作为桌面 surface，workspace toolbar 还在动画暂停按钮旁提供外观切换控件：它从 theme runtime 读取已解析的 scheme，并把相反的值写为持久偏好，因此不会成为第二个主题状态来源。运行中的 teammate card 在 card button 旁边显示中断控件 —— 绝不放在其内部，因为 card button 本身就是打开 teammate 的目标，而 button 不能嵌套。
 
 任务板展示 task identity、owner、blocker、readiness、提示性 write scope 与重叠 warning。用户可以通过 `agentTeams/createTask` 与 `agentTeams/updateTask` 创建、编辑、分配或取消分配、完成、重开和删除任务。每次 update 都发送当前显示的 revision，create 或 update rejection 都保留为显式 business result。
 
@@ -46,6 +46,8 @@ Workspace 打开期间会保持一个有界 `agentTeams/waitForChange` 调用，
 <summary>实现细节——点击展开</summary>
 
 Client export 挂载来自 [`@deepseek-ai/dsh-experimental-agent-team/remote`](../agent-team/README.zh.md) 的生成式 `ctx.remote.agentTeams` contribution，然后通过 Cordis effect 注册 locale dictionary 与一个 conversation-header slot。Dispose plugin fiber 会移除这两项 registration。
+
+Workspace 打开期间会保持一个有界 `agentTeams/waitForChange` 调用，在每次观察到变化时重新加载整个 view 并重新进入等待；transport failure 会结束该循环，并把手动刷新留作退路。其中两个组件改编自 [prompt-kit](https://www.prompt-kit.com)：`TextShimmer` 标示 host 仍在置备中的 teammate，`Loader` 在首个 view 加载期间代替 roster。prompt-kit 提供的是基于 Tailwind 的 shadcn/ui 组件，而本 client 并不使用 Tailwind，因此它们是针对同一公开契约的重新实现而非安装：以 CSS module 与主题 token 取代 utility class，并由调用方传入本地化文案而非字面量。`TextShimmer` 保留原有的 `duration` 与 `spread` prop，包括 5..45 的钳制；`Loader` 在原有十二个 variant 中只保留 `dots` 与 `typing`，因为在此没有消费者的 variant 会成为无归属的公开选择。
 
 开始 create 或 update 会让更早的 refresh 失效。成功后会重新读取完整 Team view，使每个 task 的派生字段保持最新。`team-task-conflict` 结果仅在重新读取成功后显示状态陈旧提示；如果重新读取失败，则保留该错误。由于 Team service 把任务文本或 scope 编辑与 dependency 修改公开为独立 action，两者使用两个连续的 compare-and-set mutation。
 

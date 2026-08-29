@@ -7,6 +7,7 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import { TeamAction, type TeamActionInjected } from './TeamAction.tsx'
+import { TextShimmer } from './TextShimmer.tsx'
 import { NS } from './locales.ts'
 import css from './TeamAction.module.css'
 
@@ -58,7 +59,7 @@ export function DesktopTeamRoot({ ensureSession, ...props }: DesktopTeamRootProp
         </div>
         <div className={css.sessionBadge}>
           <StateDot state="ongoing" />
-          <span>{props.t('preparingSession')}</span>
+          <TextShimmer duration={2.4} spread={10}>{props.t('preparingSession')}</TextShimmer>
         </div>
       </header>
       <div className={css.workspaceBody}>
@@ -89,7 +90,9 @@ export function DesktopTeamRoot({ ensureSession, ...props }: DesktopTeamRootProp
                 <span className={css.openSeatBody}>
                   <span className={css.roleLabel}>{index === 0 ? props.t('leadRole') : props.t('teammateRole')}</span>
                   <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
-                  <span>{index === 0 ? props.t('preparingLead') : props.t('openSeat')}</span>
+                  {index === 0
+                    ? <TextShimmer duration={2.6} spread={10}>{props.t('preparingLead')}</TextShimmer>
+                    : <span>{props.t('openSeat')}</span>}
                 </span>
               </motion.div>
             ))}

@@ -26,6 +26,8 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { Loader } from './Loader.tsx'
+import { TextShimmer } from './TextShimmer.tsx'
 import { NS, type TeamKey } from './locales.ts'
 import css from './TeamAction.module.css'
 
@@ -545,7 +547,9 @@ export function TeamAction({
           </header>
           <div className={css.workspaceBody}>
             {error !== null && <div className={css.error} role="alert">{error}</div>}
-            {loading && view === null && <div className={css.loading}>{t('loading')}</div>}
+            {loading && view === null && (
+              <div className={css.loading}><Loader variant="dots" text={t('loading')} /></div>
+            )}
             {view !== null && (
               <>
                 <section className={css.rosterSection} aria-labelledby="agent-team-roster-heading">
@@ -630,7 +634,9 @@ export function TeamAction({
                                 <span className={css.roleLabel}>{t(member.role === 'lead' ? 'leadRole' : 'teammateRole')}</span>
                                 <span className={css.memberState}>
                                   <StateDot state={member.status === 'running' ? 'ongoing' : member.status === 'failed' ? 'error' : 'done'} />
-                                  {t(memberStatusKey(member.status))}
+                                  {member.status === 'provisioning'
+                                    ? <TextShimmer duration={2.4} spread={12}>{t(memberStatusKey(member.status))}</TextShimmer>
+                                    : t(memberStatusKey(member.status))}
                                 </span>
                               </span>
                               <span className={`${css.memberGlyph} ${css[`memberGlyph${String(index % 4)}`]}`} aria-hidden="true">
