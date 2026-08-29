@@ -18,7 +18,12 @@
   grid-template-areas: 'sidebar workspace conversation details';
   height: 100%;
   overflow: hidden;
-  background: var(--dsw-alias-bg-base);
+  /* Transparent so the ambient, which paints below every column at the root
+     stacking level, is the window's ground. Lifting the columns above it
+     instead would make each one a stacking context and trap any overlay raised
+     from inside one — which is what put the settings panel under the
+     conversation column. */
+  background: transparent;
   transition: grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);
 
   /*
@@ -33,19 +38,6 @@
 
 :global(body[data-ds-dark-theme]) .frame {
   --dsh-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-1000) 42%, transparent);
-}
-
-/*
- * The workspace column's ambient covers the viewport, so every column must
- * outrank it rather than rely on document order: the sidebar and details sit
- * before and after the workspace, and only the ones painted later would clear
- * it. An explicit layer keeps all three above the ground in any order.
- */
-.sidebarCol,
-.conversationCol,
-.detailsCol {
-  position: relative;
-  z-index: 1;
 }
 
 .sidebarCol {

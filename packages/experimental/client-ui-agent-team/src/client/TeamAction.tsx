@@ -190,6 +190,9 @@ export function TeamAction({
   const [messaging, setMessaging] = useState<SessionId | null>(null)
   const [messageDraft, setMessageDraft] = useState<MessageDraft>(EMPTY_MESSAGE)
   const [messagePending, setMessagePending] = useState(false)
+  // Acknowledgement for the two actions whose effect is not otherwise visible
+  // on the card: an interrupt that lands between polls, and a queued message.
+  const [notice, setNotice] = useState<string | null>(null)
   const reduceMotion = useReducedMotion()
   const sessionRef = useRef(sessionId)
   const refreshGeneration = useRef(0)
@@ -213,6 +216,7 @@ export function TeamAction({
     setMessaging(null)
     setMessageDraft(EMPTY_MESSAGE)
     setMessagePending(false)
+    setNotice(null)
   }, [sessionId, standalone])
 
   useEffect(() => {
@@ -325,13 +329,14 @@ export function TeamAction({
         return
       }
       setError(null)
+      setNotice(t('messageQueued'))
       setMessaging(null)
       setMessageDraft(EMPTY_MESSAGE)
       await refresh()
     } finally {
       if (sessionRef.current === requestedSession) setMessagePending(false)
     }
-  }, [messageDraft, refresh, sendMessage, sessionId])
+  }, [messageDraft, refresh, sendMessage, sessionId, t])
 
   const stopTeammate = useCallback(async (targetName: string): Promise<void> => {
     const requestedSession = sessionId
@@ -346,8 +351,9 @@ export function TeamAction({
       return
     }
     setError(null)
+    setNotice(t('interrupted'))
     await refresh()
-  }, [interrupt, refresh, sessionId])
+  }, [interrupt, refresh, sessionId, t])
 
   const invalidateRefresh = useCallback((): void => {
     refreshGeneration.current += 1
@@ -448,6 +454,10 @@ export function TeamAction({
   }
 
   const teammates = view?.members.filter(member => member.role === 'teammate') ?? []
+  // There is something to delegate once the board carries a task or a member is
+  // already running; before that the lead has not done work worth splitting.
+  const canDelegate = (view?.tasks.length ?? 0) > 0
+    || (view?.members.some(member => member.status === 'running') ?? false)
   const assignable = view?.members.filter(member => member.status !== 'failed' && member.status !== 'provisioning') ?? []
   const revealTransition: Transition = reduceMotion
     ? { duration: 0.01 }
@@ -547,6 +557,9 @@ export function TeamAction({
           </header>
           <div className={css.workspaceBody}>
             {error !== null && <div className={css.error} role="alert">{error}</div>}
+            {error === null && notice !== null && (
+              <div className={css.notice} role="status">{notice}</div>
+            )}
             {loading && view === null && (
               <div className={css.loading}><Loader variant="dots" text={t('loading')} /></div>
             )}
@@ -562,6 +575,11 @@ export function TeamAction({
                     {view.members.map((member, index) => {
                       const active = member.id === activeMemberId
                       const assigned = view.tasks.filter(task => task.ownerName === member.name)
+                      // Write scopes are advisory rather than locks, so an
+                      // overlap is the one thing a member can silently do to
+                      // another's work. Surface it on the roster, not only
+                      // inside the task it belongs to.
+                      const overlapping = assigned.some(task => task.writeScopeWarnings.length > 0)
                       const canOpen = member.role === 'teammate'
                           && member.status !== 'failed'
                           && member.status !== 'provisioning'
@@ -658,6 +676,12 @@ export function TeamAction({
                                     exit={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px)' }}
                                     transition={detailsTransition}
                                   >
+                                    {overlapping && (
+                                      <span className={css.scopeWarning}>
+                                        <StateDot state="error" />
+                                        {t('scopeOverlap')}
+                                      </span>
+                                    )}
                                     <span className={css.detailLabel}>{t('assignedTasks')}</span>
                                     <span className={css.detailValue}>
                                       {assigned.length === 0 ? t('noAssignedTasks') : assigned.map(task => task.subject).join(' · ')}
@@ -674,7 +698,11 @@ export function TeamAction({
                     {Array.from({ length: Math.max(0, 4 - view.members.length) }, (_, index) => {
                       // Only the first free seat takes a new teammate; the rest
                       // stay inert so the row still reads as remaining capacity.
-                      const addable = index === 0
+                      // Delegation is offered once there is work to delegate, so
+                      // the most prominent live control on a fresh workspace is
+                      // not the one that spawns a permanent teammate.
+                      const addable = index === 0 && canDelegate
+                      const locked = index === 0 && !canDelegate
                       return (
                         <div key={`open-seat-${String(index)}`} role="listitem" className={`${css.memberCard} ${css.openSeat}`}>
                           {addable && spawning && (
@@ -694,16 +722,14 @@ export function TeamAction({
                               data-team-add-teammate
                               onClick={() => { setSpawning(true) }}
                             >
-                              <span className={css.roleLabel}>{t('teammateRole')}</span>
                               <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
                               <span>{t('addTeammate')}</span>
                             </button>
                           )}
                           {!addable && (
                             <span className={css.openSeatBody}>
-                              <span className={css.roleLabel}>{t('teammateRole')}</span>
                               <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
-                              <span>{t('openSeat')}</span>
+                              <span>{locked ? t('seatLocked') : t('openSeat')}</span>
                             </span>
                           )}
                         </div>
@@ -904,8 +930,11 @@ function SpawnForm({ draft, setDraft, pending, onSave, onCancel, t }: SpawnFormP
         <option value="fresh">{t('contextFresh')}</option>
         <option value="fork">{t('contextFork')}</option>
       </select>
+      <p className={css.spawnHint}>{t('spawnPermanent')}</p>
       <div className={css.formActions}>
-        <button type="button" disabled={pending || incomplete} onClick={onSave}>{t('spawn')}</button>
+        {pending
+          ? <Loader variant="typing" text={t('spawning')} />
+          : <button type="button" disabled={incomplete} onClick={onSave}>{t('spawn')}</button>}
         <button type="button" disabled={pending} onClick={onCancel}>{t('cancel')}</button>
       </div>
     </div>

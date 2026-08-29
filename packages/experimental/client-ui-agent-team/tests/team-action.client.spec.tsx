@@ -268,6 +268,32 @@ describe('TeamAction', () => {
     await waitFor(() => { expect(screen.queryByPlaceholderText(zh.messageText)).toBeNull() })
   })
 
+  it('withholds the spawn control until the Team has work to delegate', async () => {
+    const idle: TeamView = { ...view, tasks: [] }
+    const load = vi.fn(() => Promise.resolve({ ok: true as const, value: idle }))
+    render(<TeamAction {...props(actions({ load }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByRole('button', { name: /worker/u })
+
+    // Nothing on the board and nobody running: spawning a permanent teammate is
+    // not the move the surface should offer first.
+    expect(screen.queryByRole('button', { name: new RegExp(zh.addTeammate, 'u') })).toBeNull()
+    expect(screen.getAllByText(zh.seatLocked)).toHaveLength(1)
+  })
+
+  it('acknowledges an interrupt that lands between polls', async () => {
+    const running: TeamView = {
+      ...view,
+      members: view.members.map(member => member.role === 'teammate'
+        ? { ...member, status: 'running' as const }
+        : member),
+    }
+    render(<TeamAction {...props(actions({ load: () => Promise.resolve({ ok: true, value: running }) }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    fireEvent.click(await screen.findByRole('button', { name: zh.interrupt }))
+    expect(await screen.findByText(zh.interrupted)).toBeTruthy()
+  })
+
   it('offers no interrupt for a teammate that is not running', async () => {
     render(<TeamAction {...props(actions())} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))

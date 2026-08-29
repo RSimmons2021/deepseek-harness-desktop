@@ -88,7 +88,6 @@ export function DesktopTeamRoot({ ensureSession, ...props }: DesktopTeamRootProp
                 transition={{ duration: 0.36, delay: reduceMotion ? 0 : index * 0.055 }}
               >
                 <span className={css.openSeatBody}>
-                  <span className={css.roleLabel}>{index === 0 ? props.t('leadRole') : props.t('teammateRole')}</span>
                   <span className={css.openSeatMark} aria-hidden="true"><IconPlusOutline16 size={24} /></span>
                   {index === 0
                     ? <TextShimmer duration={2.6} spread={10}>{props.t('preparingLead')}</TextShimmer>

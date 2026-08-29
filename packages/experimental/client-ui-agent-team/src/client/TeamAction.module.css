@@ -187,7 +187,11 @@
 .eyebrow,
 .roleLabel,
 .detailLabel {
+  min-width: 0;
+  overflow: hidden;
   color: var(--team-ink-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.16em;
@@ -410,7 +414,7 @@
   min-width: 0;
   flex-direction: column;
   align-items: stretch;
-  padding: clamp(18px, 2.1vw, 34px);
+  padding: clamp(12px, 1.6vw, 30px);
   border: 0;
   background: transparent;
   color: var(--team-ink);
@@ -473,7 +477,12 @@
 }
 
 .memberTopline {
+  /* Wrap before clipping: at desktop column widths the role label and the
+     status do not fit on one line, and the card's overflow cut the label mid
+     word rather than showing it. */
+  flex-wrap: wrap;
   justify-content: space-between;
+  row-gap: 4px;
 }
 
 .memberState {
@@ -546,7 +555,9 @@
   align-items: center;
   gap: 7px;
   margin-top: auto;
-  padding-top: 28px;
+  /* Clear the corner index: a wrapped model line reached it and the two
+     collided. Vertical only — horizontal padding here narrows the name. */
+  padding: 28px 0 18px;
   text-align: center;
 }
 
@@ -615,7 +626,7 @@
   align-items: center;
   justify-content: center;
   gap: 16px;
-  padding: clamp(18px, 2.1vw, 34px);
+  padding: clamp(10px, 1.6vw, 34px);
 }
 
 .openSeatAdd {
@@ -626,7 +637,7 @@
   align-items: center;
   justify-content: center;
   gap: 16px;
-  padding: clamp(18px, 2.1vw, 34px);
+  padding: clamp(10px, 1.6vw, 34px);
   border: 0;
   background: transparent;
   color: inherit;
@@ -639,16 +650,36 @@
   color: var(--team-ink);
 }
 
+.notice {
+  margin: 0 clamp(18px, 2.4vw, 34px) 10px;
+  padding: 9px 13px;
+  border: 1px solid var(--team-stroke);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--team-surface-strong) 70%, transparent);
+  color: var(--team-ink-muted);
+  font-size: 12px;
+}
+
+.scopeWarning {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--team-danger);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.spawnHint {
+  color: var(--team-ink-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .spawnForm {
   width: 100%;
   min-width: 0;
   padding: clamp(14px, 1.6vw, 22px);
   text-align: left;
-}
-
-.openSeat .roleLabel,
-.openSeatAdd .roleLabel {
-  align-self: flex-start;
 }
 
 .openSeatMark {
@@ -678,6 +709,13 @@
   z-index: 0;
   min-height: 0;
   flex: 1;
+  /*
+   * No isolation and no ground of its own as an application surface: the
+   * ambient below carries the navy, and an isolated panel would pin that layer
+   * inside this column instead of letting it sit under the whole window.
+   */
+  background: transparent;
+  isolation: auto;
   inset: auto;
 }
 

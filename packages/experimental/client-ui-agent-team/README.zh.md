@@ -33,7 +33,9 @@ kind: "package-reference"
 
 ### 管理任务板
 
-作为桌面 surface，workspace toolbar 还在动画暂停按钮旁提供外观切换控件：它从 theme runtime 读取已解析的 scheme，并把相反的值写为持久偏好，因此不会成为第二个主题状态来源。运行中的 teammate card 在 card button 旁边显示中断控件 —— 绝不放在其内部，因为 card button 本身就是打开 teammate 的目标，而 button 不能嵌套。
+作为桌面 surface，workspace toolbar 还在动画暂停按钮旁提供外观切换控件：它从 theme runtime 读取已解析的 scheme，并把相反的值写为持久偏好，因此不会成为第二个主题状态来源。只有当 Team 有可委派的工作时（board 上存在 task，或已有成员在运行）才提供 spawn，因为 spawn 占用的名称是永久且不会复用的，全新的 workspace 不应把它作为最显眼的可用控件；在此之前第一个席位会说明这一点。Spawn 表单会声明该永久性并报告自身进度，因为该调用会一直保持到 teammate 到达持久的 active 或 failed 边界。Interrupt 与已入队的 message 各自留下简短确认，因为两者在轮询之间都不会体现在 card 上。若某成员的已分配 task 带有 write-scope 重叠警告，会直接显示在 roster 上而不仅在 task 内部，因为 scope 是提示性的而非锁。
+
+运行中的 teammate card 在 card button 旁边显示中断控件 —— 绝不放在其内部，因为 card button 本身就是打开 teammate 的目标，而 button 不能嵌套。
 
 任务板展示 task identity、owner、blocker、readiness、提示性 write scope 与重叠 warning。用户可以通过 `agentTeams/createTask` 与 `agentTeams/updateTask` 创建、编辑、分配或取消分配、完成、重开和删除任务。每次 update 都发送当前显示的 revision，create 或 update rejection 都保留为显式 business result。
 
