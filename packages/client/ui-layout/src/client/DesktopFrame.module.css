@@ -34,6 +34,19 @@
   --dsh-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-1000) 42%, transparent);
 }
 
+/*
+ * The workspace column's ambient covers the viewport, so every column must
+ * outrank it rather than rely on document order: the sidebar and details sit
+ * before and after the workspace, and only the ones painted later would clear
+ * it. An explicit layer keeps all three above the ground in any order.
+ */
+.sidebarCol,
+.conversationCol,
+.detailsCol {
+  position: relative;
+  z-index: 1;
+}
+
 .sidebarCol {
   display: flex;
   min-width: 0;

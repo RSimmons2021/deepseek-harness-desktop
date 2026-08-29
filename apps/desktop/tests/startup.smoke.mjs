@@ -47,9 +47,13 @@ try {
   // that has already acknowledged them shows neither.
   for (const label of [/^Continue$/u, /^Configure later$/u]) {
     const gate = page.getByRole('button', { name: label })
+    // Wait for the gate rather than sampling for it: the onboarding mounts a
+    // beat after the shell, so a bare count() races it and leaves the notice
+    // covering everything the assertions below reach for.
+    await gate.first().waitFor({ state: 'visible', timeout: 20_000 }).catch(() => {})
     if (await gate.count() > 0) {
       await gate.first().click()
-      await page.waitForTimeout(400)
+      await page.waitForTimeout(500)
     }
   }
   await page.locator('[data-shell-overlay]').waitFor({ timeout: 30_000 })
