@@ -40,6 +40,23 @@
   --dsh-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-1000) 42%, transparent);
 }
 
+/*
+ * Nothing has happened in this Session yet, so the Team surface can only show an
+ * inert roster while the conversation carries the workspace picker and the
+ * composer that unblock everything. The workspace track collapses until the
+ * Session stops being blank. The column stays mounted — its ambient is the
+ * window's ground and is positioned against the viewport, so a zero track
+ * neither clips nor hides it — and the grid transition reveals the hero when
+ * the first work lands.
+ */
+.frame[data-session-blank] {
+  grid-template-columns:
+    var(--dsh-desktop-sidebar, 280px)
+    0
+    minmax(0, 1fr)
+    var(--dsh-desktop-details, 0px);
+}
+
 .sidebarCol {
   /* Declared seam on the sidebar surface, matching the conversation column: the
      rail stops painting its own fill so the window ambient reads through it. */
@@ -121,5 +138,9 @@
   .conversationCol {
     border-top: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 60%, transparent);
     border-left: 0;
+  }
+
+  .frame[data-session-blank] {
+    grid-template-rows: 0 minmax(0, 1fr);
   }
 }

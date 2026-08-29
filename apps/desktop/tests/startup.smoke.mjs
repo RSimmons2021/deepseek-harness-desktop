@@ -64,6 +64,20 @@ try {
   await composerSeat.waitFor({ timeout: 60_000 })
   const conversationWidth = (await page.locator('[data-slot="conversation"] > *').first().boundingBox())?.width ?? 0
   assert.ok(conversationWidth > 200, `conversation column collapsed to ${String(conversationWidth)}px`)
+  // A blank Session hands the room to the conversation, so the Team column is
+  // mounted at zero width until the first work lands. Assert that, then reveal
+  // it to exercise the roster: reaching a non-blank Session for real needs a
+  // model, which this keyless run has no way to call.
+  const frame = page.locator('[data-session-blank]')
+  await frame.waitFor({ timeout: 30_000 })
+  const collapsed = await page.locator('[data-slot="desktop.root"] > *').first().boundingBox()
+  assert.ok(
+    collapsed === null || collapsed.width < 1,
+    `Team column should be collapsed while the Session is blank, got ${JSON.stringify(collapsed)}`,
+  )
+  await page.evaluate(() => { document.querySelector('[data-session-blank]')?.removeAttribute('data-session-blank') })
+  await page.waitForTimeout(600)
+
   // Scope to the Team roster: the conversation column beside it also renders
   // list items, so a page-wide listitem locator no longer names a roster card.
   const roster = page.locator('[data-team-action] [role="list"]').first()

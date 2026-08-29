@@ -706,14 +706,15 @@
 .root[data-team-standalone='true'] .panel,
 .panel[data-team-desktop-root] {
   position: relative;
-  z-index: 0;
   min-height: 0;
   flex: 1;
   /*
-   * No isolation and no ground of its own as an application surface: the
-   * ambient below carries the navy, and an isolated panel would pin that layer
-   * inside this column instead of letting it sit under the whole window.
+   * No stacking context and no ground of its own as an application surface: the
+   * ambient below carries the navy, and any stacking context here — an explicit
+   * z-index as much as `isolation` — pins that layer inside this column, where
+   * it covers whatever the frame painted before it.
    */
+  z-index: auto;
   background: transparent;
   isolation: auto;
   inset: auto;

@@ -27,8 +27,20 @@ function DetailsColumn(props: { children?: ReactNode }) {
 }
 
 /** Lay the window out as sidebar, Team workspace, conversation, and details. */
-export function DesktopFrame({ useStore, renderSlot, SessionProvider }: DesktopFrameProps) {
+export function DesktopFrame({ useStore, useSessions, renderSlot, SessionProvider }: DesktopFrameProps) {
   const panels = useStore(s => s)
+  /*
+   * A blank Session is one nothing has happened in yet, which is exactly when
+   * the Team surface can only show an inert roster: no workspace picked, or one
+   * picked and no work sent. The conversation carries both the workspace picker
+   * and the composer, so it takes the room until the Session stops being blank.
+   * Workspace membership itself would be the narrower signal, but it is
+   * declared by the conversation package, which already depends on this one.
+   */
+  const sessionBlank = useSessions((sessions) => {
+    const current = sessions.current
+    return current === undefined || sessions.byId[current]?.blank !== false
+  })
   // The store's width preference IS the open/closed state: zero resolves to the
   // compact control rail, which stays mounted so the sidebar occupant keeps its
   // own state across a collapse.
@@ -44,6 +56,7 @@ export function DesktopFrame({ useStore, renderSlot, SessionProvider }: DesktopF
       } as React.CSSProperties}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-details-collapsed={panels.details === 0 || undefined}
+      data-session-blank={sessionBlank || undefined}
     >
       <div className={css.sidebarCol}>
         {renderSlot('sidebar', { collapsed: sidebarCollapsed, width: sidebarWidth })}
