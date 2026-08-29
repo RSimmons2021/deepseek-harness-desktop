@@ -11,6 +11,10 @@ English | [中文](README.zh.md)
 
 `dsh-client-ui-sidebar` is the sidebar shell of the dsh web client: users see the brand row, start new sessions, collapse into the layout-owned 56px rail, and reach Settings from the bottom-pinned seat, while the scroll-aware region seat hosts the Workspace and Session browser. The Workspace and Session browser rendered into `sidebar.workspaces` belongs to ui-workspace; this package neither derives its rows nor owns its view preferences. A deployment package can replace the brand mark or name without replacing the New Session control or the rail geometry, and New Session starts the runtime's page-local frontend Session Intent against the explicit, current, or most recently active Workspace. Collapse into the layout-owned 56px rail remains presentation-local.
 
+### Host-painted ground
+
+The rail paints `--dsh-sidebar-surface`, falling back to the ordinary sidebar fill. A host that paints its own ground behind the rail — the desktop frame, whose ambient spans the window — sets it to `transparent` and supplies its own scrim. Unset, nothing changes.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

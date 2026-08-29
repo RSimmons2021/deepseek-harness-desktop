@@ -22,10 +22,11 @@
   transition: grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);
 
   /*
-   * Reading scrim for the conversation column. A plain translucent fill rather
-   * than a backdrop blur: the ground behind it is a soft gradient with no
-   * high-frequency detail for a blur to resolve, and a full-column
-   * backdrop-filter costs a re-blend of the whole window every frame.
+   * Reading scrim shared by every column that sits over the ambient. A plain
+   * translucent fill rather than a backdrop blur: the ground behind it is a
+   * soft gradient with no high-frequency detail for a blur to resolve, and a
+   * full-column backdrop-filter costs a re-blend of the whole window every
+   * frame.
    */
   --dsh-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-00) 74%, transparent);
 }
@@ -48,10 +49,15 @@
 }
 
 .sidebarCol {
+  /* Declared seam on the sidebar surface, matching the conversation column: the
+     rail stops painting its own fill so the window ambient reads through it. */
+  --dsh-sidebar-surface: transparent;
+
   display: flex;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+  background: var(--dsh-desktop-chat-scrim);
   grid-area: sidebar;
   overflow: hidden;
 }
@@ -83,10 +89,14 @@
 }
 
 .detailsCol {
+  /* Declared seam on the details surface, matching the other columns. */
+  --dsh-details-surface: transparent;
+
   display: flex;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+  background: var(--dsh-desktop-chat-scrim);
   grid-area: details;
   overflow: hidden;
 }
