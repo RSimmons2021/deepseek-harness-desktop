@@ -927,6 +927,31 @@ describe('Team Remote API', () => {
     expect(ctx.agentTeams.providerFor('fork')).toBe('fork')
   })
 
+  it('frames a Remote peer message as text and preserves send rejections', async () => {
+    const { ctx, lead } = await setup([])
+    const send = vi.spyOn(ctx.agentTeams, 'sendMessage')
+      .mockResolvedValueOnce({ messageId: TeamMessageId('message-1'), status: 'accepted' })
+      .mockRejectedValueOnce(new TeamError('no such teammate', 'TEAM_MEMBER_NOT_FOUND'))
+      .mockRejectedValueOnce(new Error('unexpected send failure'))
+    const request = { target: 'editor', message: 'ship it', delivery: 'quiet' as const }
+
+    await expect(ctx.agentTeams.remoteSendMessage(lead, request)).resolves.toMatchObject({
+      ok: true,
+      value: { status: 'accepted' },
+    })
+    expect(send).toHaveBeenCalledWith(lead, expect.objectContaining({
+      target: 'editor',
+      content: [{ type: 'text', text: 'ship it' }],
+      delivery: 'quiet',
+      signal: expect.any(AbortSignal),
+    }))
+    await expect(ctx.agentTeams.remoteSendMessage(lead, request)).resolves.toEqual({
+      ok: false,
+      error: { code: 'team-rejected', message: 'no such teammate' },
+    })
+    await expect(ctx.agentTeams.remoteSendMessage(lead, request)).rejects.toThrow('unexpected send failure')
+  })
+
   it('reports the pre-interrupt status and preserves interrupt rejections', async () => {
     const { ctx, lead } = await setup([])
     vi.spyOn(ctx.agentTeams, 'interrupt')

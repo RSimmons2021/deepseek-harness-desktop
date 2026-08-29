@@ -40,6 +40,18 @@ try {
     throw error
   }
   assert.match(await page.evaluate(() => navigator.userAgent), /DeepSeekHarnessDesktop/u)
+
+  // Mounting the sidebar brings the settings onboarding with it, and a fresh
+  // user-data directory always starts behind the testing notice and the API-key
+  // prompt. Clear both so the assertions below reach the workspace; a launch
+  // that has already acknowledged them shows neither.
+  for (const label of [/^Continue$/u, /^Configure later$/u]) {
+    const gate = page.getByRole('button', { name: label })
+    if (await gate.count() > 0) {
+      await gate.first().click()
+      await page.waitForTimeout(400)
+    }
+  }
   await page.locator('[data-shell-overlay]').waitFor({ timeout: 30_000 })
   // The conversation column mounts in its hero state until a workspace is
   // chosen, so assert the surface and its composer seat rather than an input.

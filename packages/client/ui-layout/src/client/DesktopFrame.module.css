@@ -1,17 +1,25 @@
 /*
- * Desktop split: the Team workspace keeps the wide hero column the reference
- * design is built around, and the conversation takes a fixed reading column
- * beside it. Both tracks are min-0 so each surface scrolls inside itself
- * instead of stretching the window.
+ * Desktop split: session rail, the Team workspace hero, the conversation
+ * reading column, and the details column. The sidebar and details tracks are
+ * driven by the layout store's width preferences (0 = closed, resolved to the
+ * compact rail for the sidebar), so `ctx.layout` moves them here exactly as it
+ * does in the browser frame. Every content track is min-0 so each surface
+ * scrolls inside itself instead of stretching the window.
  */
 .frame {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 34%);
+  grid-template-columns:
+    var(--dsh-desktop-sidebar, 280px)
+    minmax(0, 1fr)
+    minmax(320px, 34%)
+    var(--dsh-desktop-details, 0px);
   grid-template-rows: 100%;
+  grid-template-areas: 'sidebar workspace conversation details';
   height: 100%;
   overflow: hidden;
   background: var(--dsw-alias-bg-base);
+  transition: grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);
 
   /*
    * Reading scrim for the conversation column. A plain translucent fill rather
@@ -26,12 +34,22 @@
   --dsh-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-1000) 42%, transparent);
 }
 
+.sidebarCol {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  grid-area: sidebar;
+  overflow: hidden;
+}
+
 .workspaceCol {
   position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+  grid-area: workspace;
   overflow: hidden;
 }
 
@@ -47,6 +65,16 @@
   flex-direction: column;
   border-left: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 60%, transparent);
   background: var(--dsh-desktop-chat-scrim);
+  grid-area: conversation;
+  overflow: hidden;
+}
+
+.detailsCol {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  grid-area: details;
   overflow: hidden;
 }
 
@@ -54,6 +82,7 @@
   position: absolute;
   inset: 0;
   z-index: 20;
+  grid-area: sidebar / sidebar / details / details;
   pointer-events: none;
 }
 
@@ -61,11 +90,17 @@
   pointer-events: auto;
 }
 
-/* One window too narrow for two columns stacks them, workspace first. */
-@media (max-width: 1100px) {
+/* Too narrow for four tracks: the hero and the conversation stack instead. */
+@media (max-width: 1240px) {
   .frame {
-    grid-template-columns: 100%;
+    grid-template-columns:
+      var(--dsh-desktop-sidebar, 280px)
+      minmax(0, 1fr)
+      var(--dsh-desktop-details, 0px);
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'sidebar workspace details'
+      'sidebar conversation details';
   }
 
   .conversationCol {

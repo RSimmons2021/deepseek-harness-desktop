@@ -99,6 +99,10 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
         },
       },
     }),
+    sendMessage: () => Promise.resolve({
+      ok: true,
+      value: { ok: true, value: { messageId: 'message-1' as never, status: 'accepted' } },
+    }),
     interrupt: () => Promise.resolve({
       ok: true,
       value: { ok: true, value: { previousStatus: 'running' } },
@@ -238,6 +242,30 @@ describe('TeamAction', () => {
     fireEvent.click(button)
     expect(toggle).toHaveBeenCalledTimes(1)
     await screen.findByRole('button', { name: zh.toDarkTheme })
+  })
+
+  it('sends a peer message from a teammate card and closes the composer', async () => {
+    const load = vi.fn(() => Promise.resolve({ ok: true as const, value: view }))
+    const sendMessage = vi.fn(() => Promise.resolve({
+      ok: true as const,
+      value: { ok: true as const, value: { messageId: 'message-1' as never, status: 'accepted' as const } },
+    }))
+    render(<TeamAction {...props(actions({ load, sendMessage }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+
+    fireEvent.click(await screen.findByRole('button', { name: zh.message }))
+    fireEvent.change(screen.getByPlaceholderText(zh.messageText), { target: { value: 'rebase onto main' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.send }))
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(SESSION, {
+        target: 'worker',
+        message: 'rebase onto main',
+        delivery: 'quiet',
+      })
+    })
+    // The composer gives the card back once the message is durable.
+    await waitFor(() => { expect(screen.queryByPlaceholderText(zh.messageText)).toBeNull() })
   })
 
   it('offers no interrupt for a teammate that is not running', async () => {

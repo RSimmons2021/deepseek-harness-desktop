@@ -74,6 +74,9 @@ function registerUi(ctx: ClientContext): void {
     async spawnTeammate(sessionId, request) {
       return await ctx.remote.agentTeams.spawnTeammate(leadSessionId(sessionId), request)
     },
+    async sendMessage(sessionId, request) {
+      return await ctx.remote.agentTeams.sendMessage(leadSessionId(sessionId), request)
+    },
     async interrupt(sessionId, targetName) {
       return await ctx.remote.agentTeams.interrupt(leadSessionId(sessionId), targetName)
     },

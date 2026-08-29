@@ -142,22 +142,25 @@ export function apply(ctx: ClientContext): void {
       ...stockChildren,
       'desktop.root': { kind: 'single', scope: 'root' },
     } as const
+    // Both frames take the same seats: only the component and the desktop
+    // child differ, so panel geometry and the ctx.layout wiring stay identical
+    // across the two surfaces.
+    // Exclusive store: the factory itself — the framework instantiates per
+    // entry and delivers useStore/actions to the frame as standard props.
+    // The inject hook's only side effect connects the root store to ctx.layout;
+    // conversation business actions belong to their registrants.
+    const seats = {
+      name: 'root',
+      locale: 'common',
+      store: createLayoutStore,
+      inject: (actions: PanelActions) => {
+        layout.attachPanels(actions)
+        return {}
+      },
+    } as const
     const disposeRegistration = usesDesktopRoot()
-      ? ctx.slots.register({ name: 'root', children: desktopChildren }, DesktopFrame)
-      : ctx.slots.register({
-        name: 'root',
-        locale: 'common',
-        children: stockChildren,
-        // Exclusive store: the factory itself — the framework instantiates per
-        // entry and delivers useStore/actions to AppFrame as standard props.
-        store: createLayoutStore,
-        // The hook's only side effect connects the root store to ctx.layout;
-        // conversation business actions belong to their registrants.
-        inject: (actions: PanelActions) => {
-          layout.attachPanels(actions)
-          return {}
-        },
-      }, AppFrame)
+      ? ctx.slots.register({ ...seats, children: desktopChildren }, DesktopFrame)
+      : ctx.slots.register({ ...seats, children: stockChildren }, AppFrame)
     return () => {
       disposeRegistration()
       // provide()'s disposer settles asynchronously; teardown is synchronous fire-and-forget.

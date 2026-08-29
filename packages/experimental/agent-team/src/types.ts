@@ -239,6 +239,27 @@ export type TeamSpawnMutationResult =
     }
   }
 
+/**
+ * Browser-supplied peer message. A Remote request carries no `AbortSignal`, and
+ * the text arrives as one string that the service frames as a content block.
+ */
+export interface RemoteSendTeamMessageRequest {
+  readonly target: string
+  readonly message: string
+  readonly delivery: 'quiet' | 'wakeup'
+}
+
+/** Outcome of one Remote peer message, preserving Team rejections as business values. */
+export type TeamMessageMutationResult =
+  | { readonly ok: true; readonly value: SendTeamMessageResult }
+  | {
+    readonly ok: false
+    readonly error: {
+      readonly code: 'team-rejected'
+      readonly message: string
+    }
+  }
+
 /** Status one teammate held immediately before an interrupt was applied. */
 export interface TeamInterruptView {
   readonly previousStatus: 'running' | 'idle' | 'inactive'

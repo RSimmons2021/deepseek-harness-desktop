@@ -420,6 +420,27 @@
   opacity: 1;
 }
 
+.messageButton {
+  position: absolute;
+  z-index: 2;
+  top: clamp(18px, 2.1vw, 34px);
+  right: calc(clamp(18px, 2.1vw, 34px) + 32px);
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--team-stroke);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--team-surface-strong) 82%, transparent);
+  color: var(--team-ink-muted);
+  cursor: pointer;
+}
+
+.messageButton:hover {
+  border-color: var(--team-stroke-strong);
+  color: var(--team-ink);
+}
+
 .interruptButton {
   position: absolute;
   z-index: 2;

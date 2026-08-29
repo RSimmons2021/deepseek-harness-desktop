@@ -47,7 +47,7 @@ describe('ui-layout client apply', () => {
     expect(slots.spec('details')).toEqual({ kind: 'single', scope: 'session' })
   })
 
-  it('keeps browser slot contracts declared but renders only the desktop seat in Electron', async () => {
+  it('adds the desktop seat in Electron and keeps the browser panel wiring', async () => {
     const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get')
       .mockReturnValue('Mozilla/5.0 DeepSeekHarnessDesktop')
     try {
@@ -57,7 +57,9 @@ describe('ui-layout client apply', () => {
       expect(slots.entries('root')).toHaveLength(1)
       expect(slots.spec('desktop.root')).toEqual({ kind: 'single', scope: 'root' })
       expect(slots.spec('sidebar')).toEqual({ kind: 'single', scope: 'root' })
-      expect(slots.entries('root')[0]?.inject).toBeUndefined()
+      // The desktop frame renders the same columns, so it takes the same panel
+      // store and the same ctx.layout attachment as the browser frame.
+      expect(slots.entries('root')[0]?.inject).toEqual(expect.any(Function))
       await fiber.dispose()
       expect(slots.spec('desktop.root')).toBeUndefined()
     } finally {

@@ -2,11 +2,14 @@
 
 export type {
   CreateTeamTaskRequest,
+  RemoteSendTeamMessageRequest,
   RemoteSpawnTeammateRequest,
+  SendTeamMessageResult,
   SpawnTeammateResult,
   TeamInterruptMutationResult,
   TeamInterruptView,
   TeamMemberView,
+  TeamMessageMutationResult,
   TeamSpawnMutationResult,
   TeamTaskAction,
   TeamTaskId,

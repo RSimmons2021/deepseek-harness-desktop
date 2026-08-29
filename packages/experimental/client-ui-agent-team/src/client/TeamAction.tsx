@@ -4,8 +4,10 @@ import {
 } from 'motion/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
+  RemoteSendTeamMessageRequest,
   RemoteSpawnTeammateRequest,
   TeamMemberView as TeamRosterMember,
+  TeamMessageMutationResult,
   TeamSpawnMutationResult,
   TeamInterruptMutationResult,
   TeamTaskAction,
@@ -19,7 +21,7 @@ import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protoc
 import {
   IconCheckOutline14, IconCloseOutline16, IconEditOutline16, IconPlusOutline16,
   IconDarkOutline16, IconLightOutline16, IconPauseOutline16, IconPlayOutline16,
-  IconRefreshOutline14, IconTrashOutline16,
+  IconNewChatOutline16, IconRefreshOutline14, IconTrashOutline16,
   IconUserOutline16, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -38,6 +40,9 @@ export type TeamInterruptActionResult = RemoteResult<TeamInterruptMutationResult
 
 /** Generated Remote result whose business value preserves Team spawn rejections. */
 export type TeamSpawnActionResult = RemoteResult<TeamSpawnMutationResult>
+
+/** Generated Remote result whose business value preserves Team message rejections. */
+export type TeamMessageActionResult = RemoteResult<TeamMessageMutationResult>
 
 /** Appearance face the workspace toolbar reads and writes. */
 export interface TeamThemeFace {
@@ -73,6 +78,10 @@ export interface TeamActionInjected {
     sessionId: SessionId,
     request: RemoteSpawnTeammateRequest,
   ) => Promise<TeamSpawnActionResult>
+  sendMessage: (
+    sessionId: SessionId,
+    request: RemoteSendTeamMessageRequest,
+  ) => Promise<TeamMessageActionResult>
   interrupt: (sessionId: SessionId, targetName: string) => Promise<TeamInterruptActionResult>
   /**
    * Hold one bounded wait for the next Team change. The surface calls this in a
@@ -91,7 +100,7 @@ export type TeamActionProps =
 export type TeamSurfaceProps = Pick<
   TeamActionProps,
   | 'sessionId' | 'load' | 'createTask' | 'updateTask' | 'spawnTeammate'
-  | 'interrupt' | 'waitForChange' | 'openTeammate' | 'theme' | 't'
+  | 'sendMessage' | 'interrupt' | 'waitForChange' | 'openTeammate' | 'theme' | 't'
 > & {
   /** Keep the designed Team workspace mounted as the application surface. */
   standalone?: boolean
@@ -115,6 +124,14 @@ interface SpawnDraft {
 }
 
 const EMPTY_SPAWN: SpawnDraft = { name: '', description: '', prompt: '', context: 'fresh' }
+
+/** Peer-message form state. The target comes from the card the form opened on. */
+interface MessageDraft {
+  message: string
+  delivery: 'quiet' | 'wakeup'
+}
+
+const EMPTY_MESSAGE: MessageDraft = { message: '', delivery: 'quiet' }
 
 function items(value: string): string[] {
   return [...new Set(value.split(',').map(item => item.trim()).filter(Boolean))]
@@ -150,7 +167,7 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
-  sessionId, load, createTask, updateTask, spawnTeammate, interrupt, waitForChange,
+  sessionId, load, createTask, updateTask, spawnTeammate, sendMessage, interrupt, waitForChange,
   openTeammate, theme, t, standalone = false,
 }: TeamSurfaceProps) {
   const colorScheme = useSyncExternalStore(theme.subscribe, theme.colorScheme)
@@ -168,6 +185,9 @@ export function TeamAction({
   const [spawning, setSpawning] = useState(false)
   const [spawnDraft, setSpawnDraft] = useState<SpawnDraft>(EMPTY_SPAWN)
   const [spawnPending, setSpawnPending] = useState(false)
+  const [messaging, setMessaging] = useState<SessionId | null>(null)
+  const [messageDraft, setMessageDraft] = useState<MessageDraft>(EMPTY_MESSAGE)
+  const [messagePending, setMessagePending] = useState(false)
   const reduceMotion = useReducedMotion()
   const sessionRef = useRef(sessionId)
   const refreshGeneration = useRef(0)
@@ -188,6 +208,9 @@ export function TeamAction({
     setSpawning(false)
     setSpawnDraft(EMPTY_SPAWN)
     setSpawnPending(false)
+    setMessaging(null)
+    setMessageDraft(EMPTY_MESSAGE)
+    setMessagePending(false)
   }, [sessionId, standalone])
 
   useEffect(() => {
@@ -280,6 +303,33 @@ export function TeamAction({
       if (sessionRef.current === requestedSession) setSpawnPending(false)
     }
   }, [refresh, sessionId, spawnDraft, spawnTeammate])
+
+  const submitMessage = useCallback(async (targetName: string): Promise<void> => {
+    const requestedSession = sessionId
+    setMessagePending(true)
+    try {
+      const result = await sendMessage(requestedSession, {
+        target: targetName,
+        message: messageDraft.message.trim(),
+        delivery: messageDraft.delivery,
+      })
+      if (sessionRef.current !== requestedSession) return
+      if (!result.ok) {
+        setError(failureText(result.error))
+        return
+      }
+      if (!result.value.ok) {
+        setError(failureText(result.value.error))
+        return
+      }
+      setError(null)
+      setMessaging(null)
+      setMessageDraft(EMPTY_MESSAGE)
+      await refresh()
+    } finally {
+      if (sessionRef.current === requestedSession) setMessagePending(false)
+    }
+  }, [messageDraft, refresh, sendMessage, sessionId])
 
   const stopTeammate = useCallback(async (targetName: string): Promise<void> => {
     const requestedSession = sessionId
@@ -533,6 +583,17 @@ export function TeamAction({
                           onFocusCapture={() => { setActiveMemberId(member.id) }}
                           onBlurCapture={() => { setActiveMemberId(null) }}
                         >
+                          {member.role === 'teammate' && canOpen && messaging !== member.id && (
+                            <button
+                              type="button"
+                              className={css.messageButton}
+                              aria-label={t('message')}
+                              title={t('message')}
+                              onClick={() => { setMessaging(member.id); setMessageDraft(EMPTY_MESSAGE) }}
+                            >
+                              <IconNewChatOutline16 size={13} />
+                            </button>
+                          )}
                           {member.role === 'teammate' && member.status === 'running' && (
                             <button
                               type="button"
@@ -544,51 +605,63 @@ export function TeamAction({
                               <IconCloseOutline16 size={13} />
                             </button>
                           )}
-                          <button
-                            type="button"
-                            className={css.memberButton}
-                            aria-label={accessibleLabel}
-                            disabled={!canOpen}
-                            title={canOpen ? t('open') : undefined}
-                            onClick={() => {
-                              void openTeammate(sessionId, member).catch((reason: unknown) => { setError(String(reason)) })
-                            }}
-                          >
-                            <span className={css.memberTopline}>
-                              <span className={css.roleLabel}>{t(member.role === 'lead' ? 'leadRole' : 'teammateRole')}</span>
-                              <span className={css.memberState}>
-                                <StateDot state={member.status === 'running' ? 'ongoing' : member.status === 'failed' ? 'error' : 'done'} />
-                                {t(memberStatusKey(member.status))}
+                          {messaging === member.id && (
+                            <MessageForm
+                              draft={messageDraft}
+                              setDraft={setMessageDraft}
+                              pending={messagePending}
+                              onSend={() => { void submitMessage(member.name) }}
+                              onCancel={() => { setMessaging(null); setMessageDraft(EMPTY_MESSAGE) }}
+                              t={t}
+                            />
+                          )}
+                          {messaging !== member.id && (
+                            <button
+                              type="button"
+                              className={css.memberButton}
+                              aria-label={accessibleLabel}
+                              disabled={!canOpen}
+                              title={canOpen ? t('open') : undefined}
+                              onClick={() => {
+                                void openTeammate(sessionId, member).catch((reason: unknown) => { setError(String(reason)) })
+                              }}
+                            >
+                              <span className={css.memberTopline}>
+                                <span className={css.roleLabel}>{t(member.role === 'lead' ? 'leadRole' : 'teammateRole')}</span>
+                                <span className={css.memberState}>
+                                  <StateDot state={member.status === 'running' ? 'ongoing' : member.status === 'failed' ? 'error' : 'done'} />
+                                  {t(memberStatusKey(member.status))}
+                                </span>
                               </span>
-                            </span>
-                            <span className={`${css.memberGlyph} ${css[`memberGlyph${String(index % 4)}`]}`} aria-hidden="true">
-                              <IconUserOutline16 size={44} />
-                            </span>
-                            <span className={css.memberText}>
-                              <strong>{member.name}</strong>
-                              {member.model !== undefined && <small>{t('model')}: {member.model}</small>}
-                              {member.diagnostics.map(diagnostic => (
-                                <small key={diagnostic} className={css.diagnostic}>{diagnostic}</small>
-                              ))}
-                            </span>
-                            <AnimatePresence initial={false}>
-                              {active && (
-                                <motion.span
-                                  className={css.memberDetails}
-                                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px)' }}
-                                  animate={{ opacity: 1, transform: 'translateY(0)' }}
-                                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px)' }}
-                                  transition={detailsTransition}
-                                >
-                                  <span className={css.detailLabel}>{t('assignedTasks')}</span>
-                                  <span className={css.detailValue}>
-                                    {assigned.length === 0 ? t('noAssignedTasks') : assigned.map(task => task.subject).join(' · ')}
-                                  </span>
-                                </motion.span>
-                              )}
-                            </AnimatePresence>
-                            <span className={css.cardIndex}>{String(index + 1).padStart(2, '0')}</span>
-                          </button>
+                              <span className={`${css.memberGlyph} ${css[`memberGlyph${String(index % 4)}`]}`} aria-hidden="true">
+                                <IconUserOutline16 size={44} />
+                              </span>
+                              <span className={css.memberText}>
+                                <strong>{member.name}</strong>
+                                {member.model !== undefined && <small>{t('model')}: {member.model}</small>}
+                                {member.diagnostics.map(diagnostic => (
+                                  <small key={diagnostic} className={css.diagnostic}>{diagnostic}</small>
+                                ))}
+                              </span>
+                              <AnimatePresence initial={false}>
+                                {active && (
+                                  <motion.span
+                                    className={css.memberDetails}
+                                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px)' }}
+                                    animate={{ opacity: 1, transform: 'translateY(0)' }}
+                                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px)' }}
+                                    transition={detailsTransition}
+                                  >
+                                    <span className={css.detailLabel}>{t('assignedTasks')}</span>
+                                    <span className={css.detailValue}>
+                                      {assigned.length === 0 ? t('noAssignedTasks') : assigned.map(task => task.subject).join(' · ')}
+                                    </span>
+                                  </motion.span>
+                                )}
+                              </AnimatePresence>
+                              <span className={css.cardIndex}>{String(index + 1).padStart(2, '0')}</span>
+                            </button>
+                          )}
                         </div>
                       )
                     })}
@@ -748,6 +821,42 @@ interface TaskFormProps {
   onSave: () => void
   onCancel: () => void
   t: TeamActionProps['t']
+}
+
+interface MessageFormProps {
+  draft: MessageDraft
+  setDraft: (draft: MessageDraft) => void
+  pending: boolean
+  onSend: () => void
+  onCancel: () => void
+  t: TeamSurfaceProps['t']
+}
+
+/** In-card composer for one durable peer message to this teammate. */
+function MessageForm({ draft, setDraft, pending, onSend, onCancel, t }: MessageFormProps) {
+  return (
+    <div className={`${css.form} ${css.spawnForm}`}>
+      <textarea
+        value={draft.message}
+        placeholder={t('messageText')}
+        onChange={(event: ChangeEvent<HTMLTextAreaElement>) => { setDraft({ ...draft, message: event.target.value }) }}
+      />
+      <select
+        value={draft.delivery}
+        aria-label={t('messageText')}
+        onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+          setDraft({ ...draft, delivery: event.target.value === 'wakeup' ? 'wakeup' : 'quiet' })
+        }}
+      >
+        <option value="quiet">{t('messageQuiet')}</option>
+        <option value="wakeup">{t('messageWakeup')}</option>
+      </select>
+      <div className={css.formActions}>
+        <button type="button" disabled={pending || draft.message.trim() === ''} onClick={onSend}>{t('send')}</button>
+        <button type="button" disabled={pending} onClick={onCancel}>{t('cancel')}</button>
+      </div>
+    </div>
+  )
 }
 
 interface SpawnFormProps {

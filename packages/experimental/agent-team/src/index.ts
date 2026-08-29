@@ -22,8 +22,10 @@ import type {
   SpawnTeammateRequest,
   SpawnTeammateResult,
   TeamMemberView,
+  RemoteSendTeamMessageRequest,
   RemoteSpawnTeammateRequest,
   TeamInterruptMutationResult,
+  TeamMessageMutationResult,
   TeamSpawnMutationResult,
   TeamTaskMutationResult,
   TeamTaskView,
@@ -306,6 +308,37 @@ export class TeamService extends TypertRemoteService {
           prompt: [{ type: 'text', text: request.prompt }],
           context: request.context,
           provider: this.providerFor(request.context),
+          signal: new AbortController().signal,
+        }),
+      }
+    } catch (error) {
+      if (!(error instanceof TeamError)) throw error
+      return { ok: false, error: { code: 'team-rejected', message: error.message } }
+    }
+  }
+
+  /**
+   * Queue one durable peer message through the generated Remote API.
+   *
+   * The request carries no cancellation: the wire cannot hold an `AbortSignal`,
+   * and the enqueue is durable before delivery is attempted, so there is no
+   * pre-queue window for a browser to cancel.
+   * @param agent - exact live Team member sending the message.
+   * @param request - target name, message text, and scheduling mode.
+   * @returns durable message identity and delivery observation, or a typed Team rejection.
+   */
+  @Remote('sendMessage')
+  async remoteSendMessage(
+    agent: Agent,
+    request: RemoteSendTeamMessageRequest,
+  ): Promise<TeamMessageMutationResult> {
+    try {
+      return {
+        ok: true,
+        value: await this.sendMessage(agent, {
+          target: request.target,
+          content: [{ type: 'text', text: request.message }],
+          delivery: request.delivery,
           signal: new AbortController().signal,
         }),
       }
