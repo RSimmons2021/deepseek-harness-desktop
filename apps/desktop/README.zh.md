@@ -15,6 +15,8 @@ pnpm install
 pnpm desktop
 ```
 
+该应用还会传入自己的 patch layer `profile.patch.yml`。`dsh-base` 以休眠方式挂载 pi-ai 多 provider adapter 及其旁的 credential store，但没有任何 bundle 挂载 authorization seam，因此 pi-ai 的 provider login 从不注册；该 patch 负责挂载它。实际运行哪些 provider 仍属用户设置 —— Models 页面会把它们写入 `$DSH_HOME/settings.yaml`，凭据则写入受管 credential store，而非进程环境。
+
 设置 `DSH_DESKTOP_WORKSPACE` 可让 Harness 针对 shell 初始 working directory 以外的目录启动。Desktop data 隔离在 Electron 的 per-user application-data directory 下。Renderer 不启用 Node integration，不提供 preload bridge，不授予 permission，且无法离开本地 Harness origin；外部 HTTP link 会在操作系统浏览器中打开。
 
 Desktop host 使用 `PATH` 中的 `node` executable 启动 Harness；必要时可通过 `DSH_DESKTOP_NODE` 指定明确的 Node executable。仓库与 desktop entry 构建完成后，`pnpm --filter @deepseek-ai/dsh-desktop run test:smoke` 会验证 Electron 能显示 splash window、清除首次运行的 onboarding gate、挂载 conversation column 与其 composer seat、确认会话空白时 Team column 处于收起状态并将其展开、进入实时 Team roster，并执行参考交互中的 card expansion 与 sibling movement。Hover 断言会重试：展开由指针在一个自身正在动画的盒子上的 enter/leave 驱动，约每二十五次 hover 会有一次中途丢失，因此运行会重新 hover 而非直接失败，同时仍会让始终无法展开的 card 判定失败。

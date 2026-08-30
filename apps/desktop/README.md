@@ -15,6 +15,8 @@ pnpm install
 pnpm desktop
 ```
 
+The application also passes its own patch layer, `profile.patch.yml`. `dsh-base` mounts the pi-ai multi-provider adapter dormant and the credential store beside it, but no bundle mounts the authorization seam, so pi-ai's provider logins never register; the patch mounts it. Which providers actually run stays user settings — the Models page writes them to `$DSH_HOME/settings.yaml`, and credentials to the managed credential store rather than the process environment.
+
 Set `DSH_DESKTOP_WORKSPACE` to launch the Harness against a directory other than the shell's initial working directory. Desktop data is isolated under Electron's per-user application-data directory. The renderer has no Node integration, no preload bridge, no permission grants, and cannot navigate away from the local Harness origin; external HTTP links open in the operating system browser.
 
 The desktop host starts the Harness with the `node` executable from `PATH`; set `DSH_DESKTOP_NODE` to an explicit Node executable when required. After the repository and desktop entry are built, `pnpm --filter @deepseek-ai/dsh-desktop run test:smoke` verifies that Electron displays its splash window, clears the first-run onboarding gates, mounts the conversation column and its composer seat, checks the Team column is collapsed while the session is blank, reveals it, reaches the live Team roster, and performs the card expansion and sibling movement from the reference interaction. The hover assertion retries: expansion is driven by pointer enter/leave on a box that is itself animating, and about one hover in twenty-five is lost part way through, so the run re-hovers rather than failing while still failing a card that never expands.

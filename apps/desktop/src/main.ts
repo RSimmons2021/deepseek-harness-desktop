@@ -8,6 +8,7 @@ const DESKTOP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const REPOSITORY_ROOT = resolve(DESKTOP_ROOT, '../..')
 const CLI_ENTRY = join(REPOSITORY_ROOT, 'apps/cli/lib/bin.js')
 const DESKTOP_ICON = join(DESKTOP_ROOT, 'assets/icon.png')
+const DESKTOP_PATCH = join(DESKTOP_ROOT, 'profile.patch.yml')
 const DESKTOP_PROFILE = 'desktop'
 const DESKTOP_PROFILE_BUNDLES = [
   '@deepseek-ai/dsh-base',
@@ -21,11 +22,15 @@ const TEAM_PROFILE_MANIFESTS = [
 ] as const
 const READY_PATTERN = /dsh web: (http:\/\/[^\s(]+)/u
 const STARTUP_TIMEOUT_MS = 60_000
+const SHUTDOWN_GRACE_MS = 5_000
+const SHUTDOWN_FORCE_MS = 2_000
 
 let harnessProcess: ChildProcess | undefined
+let harnessStop: Promise<void> | undefined
 let mainWindow: BrowserWindow | undefined
 let allowedOrigin: string | undefined
 let quitting = false
+let quitReady = false
 
 function escapeHtml(value: string): string {
   return value
@@ -118,8 +123,39 @@ function prepareDesktopProfile(desktopData: string): void {
   }, undefined, 2)}\n`)
 }
 
+/** Wait for one child to exit without leaving listeners or timers behind. */
+function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true)
+  return new Promise((resolveExit) => {
+    const finish = (exited: boolean): void => {
+      clearTimeout(timeout)
+      child.off('exit', onExit)
+      resolveExit(exited)
+    }
+    const onExit = (): void => { finish(true) }
+    const timeout = setTimeout(() => { finish(false) }, timeoutMs)
+    child.once('exit', onExit)
+  })
+}
+
+/** Terminate the local Harness and wait for its direct process to settle. */
+function stopHarness(): Promise<void> {
+  if (harnessStop !== undefined) return harnessStop
+  const child = harnessProcess
+  if (child === undefined) return Promise.resolve()
+  harnessStop = (async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill()
+    if (!await waitForExit(child, SHUTDOWN_GRACE_MS)) {
+      child.kill('SIGKILL')
+      await waitForExit(child, SHUTDOWN_FORCE_MS)
+    }
+    if (harnessProcess === child) harnessProcess = undefined
+  })().finally(() => { harnessStop = undefined })
+  return harnessStop
+}
+
 function startHarness(): Promise<string> {
-  for (const path of [CLI_ENTRY, ...TEAM_PROFILE_MANIFESTS]) {
+  for (const path of [CLI_ENTRY, DESKTOP_PATCH, ...TEAM_PROFILE_MANIFESTS]) {
     if (!existsSync(path)) {
       throw new Error(`Missing built desktop dependency: ${path}. Run pnpm desktop from the repository root.`)
     }
@@ -130,6 +166,7 @@ function startHarness(): Promise<string> {
   const child = spawn(process.env.DSH_DESKTOP_NODE ?? 'node', [
     CLI_ENTRY,
     '--profile', DESKTOP_PROFILE,
+    '--patch', DESKTOP_PATCH,
     '--no-open',
     '--port', '0',
   ], {
@@ -149,7 +186,7 @@ function startHarness(): Promise<string> {
     let buffered = ''
     const timeout = setTimeout(() => {
       rejectReady(new Error(`Harness did not report a ready URL within ${String(STARTUP_TIMEOUT_MS / 1000)} seconds.`))
-      child.kill()
+      void stopHarness()
     }, STARTUP_TIMEOUT_MS)
 
     child.stdout.setEncoding('utf8')
@@ -226,6 +263,7 @@ function createWindow(): BrowserWindow {
 }
 
 async function boot(): Promise<void> {
+  if (harnessStop !== undefined) await harnessStop
   mainWindow = createWindow()
   await mainWindow.loadURL(bootPage('Starting workspace', 'Launching the local Harness service and Agent Teams profile.'))
   mainWindow.show()
@@ -238,9 +276,14 @@ async function boot(): Promise<void> {
   }
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   quitting = true
-  harnessProcess?.kill()
+  if (quitReady) return
+  event.preventDefault()
+  void stopHarness().finally(() => {
+    quitReady = true
+    app.quit()
+  })
 })
 
 app.on('window-all-closed', () => {
@@ -248,13 +291,14 @@ app.on('window-all-closed', () => {
     app.quit()
     return
   }
-  harnessProcess?.kill()
-  harnessProcess = undefined
   allowedOrigin = undefined
+  void stopHarness()
 })
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) void boot()
+  if (BrowserWindow.getAllWindows().length === 0) {
+    void stopHarness().then(boot)
+  }
 })
 
 void app.whenReady()

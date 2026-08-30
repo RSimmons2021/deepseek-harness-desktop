@@ -23,6 +23,7 @@ const application = await electron.launch({
     DSH_DESKTOP_WORKSPACE: repositoryRoot,
   },
 })
+let applicationClosed = false
 
 try {
   const page = await application.firstWindow({ timeout: 15_000 })
@@ -85,39 +86,17 @@ try {
   const secondCard = roster.locator('[role="listitem"]').nth(1)
   await member.waitFor({ timeout: 30_000 })
 
-  /*
-   * Expansion is driven by pointer enter/leave on a box that is itself
-   * animating, and roughly one hover in twenty-five is lost part way through:
-   * the card records `pointerleave` without the mouse moving, reports
-   * `data-expanded="false"` again, and the easeOutBack return undershoots to
-   * just under the resting width. Take the card's own expanded state as the
-   * signal and re-hover when it is lost, so a dropped hover retries instead of
-   * failing the run, while a card that never expands still fails it.
-   */
-  async function hoverUntilExpanded() {
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      await page.mouse.move(0, 0)
-      await page.waitForTimeout(700)
-      const restMember = await member.boundingBox()
-      const restSecond = await secondCard.boundingBox()
-      await member.hover()
-      await page.waitForTimeout(750)
-      if (await member.getAttribute('data-expanded') === 'true') {
-        return {
-          attempt,
-          restMember,
-          restSecond,
-          openMember: await member.boundingBox(),
-          openSecond: await secondCard.boundingBox(),
-        }
-      }
-    }
-    return null
-  }
-
-  const hovered = await hoverUntilExpanded()
-  assert.ok(hovered !== null, 'roster card never reported itself expanded across three hovers')
-  const { restMember, restSecond, openMember, openSecond } = hovered
+  // Pointer exit belongs to the stable roster boundary, so the card can widen
+  // and move its siblings without cancelling its own hover halfway through.
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(700)
+  const restMember = await member.boundingBox()
+  const restSecond = await secondCard.boundingBox()
+  await member.hover()
+  await page.waitForTimeout(750)
+  assert.equal(await member.getAttribute('data-expanded'), 'true', 'roster card lost hover while expanding')
+  const openMember = await member.boundingBox()
+  const openSecond = await secondCard.boundingBox()
   assert.ok(
     restMember !== null && openMember !== null && openMember.width > restMember.width + 20,
     `hovered card did not widen: ${JSON.stringify({ before: restMember?.width, after: openMember?.width })}`,
@@ -132,8 +111,23 @@ try {
   const artifactDirectory = join(repositoryRoot, '.artifacts')
   mkdirSync(artifactDirectory, { recursive: true })
   await page.screenshot({ path: join(artifactDirectory, 'desktop-startup.png'), fullPage: true })
-  console.log(`desktop smoke: loaded ${new URL(page.url()).origin}`)
-} finally {
+  const harnessOrigin = new URL(page.url()).origin
+  console.log(`desktop smoke: loaded ${harnessOrigin}`)
+
   await application.close()
+  applicationClosed = true
+  const shutdownDeadline = Date.now() + 10_000
+  let harnessStopped = false
+  while (!harnessStopped && Date.now() < shutdownDeadline) {
+    try {
+      await fetch(harnessOrigin, { signal: AbortSignal.timeout(500) })
+      await new Promise(resolve => setTimeout(resolve, 100))
+    } catch {
+      harnessStopped = true
+    }
+  }
+  assert.equal(harnessStopped, true, 'desktop Harness kept accepting connections after Electron closed')
+} finally {
+  if (!applicationClosed) await application.close()
   rmSync(userData, { recursive: true, force: true })
 }

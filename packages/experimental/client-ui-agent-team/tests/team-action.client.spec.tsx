@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   TeamTaskId, TeamTaskView as TeamTask, TeamView,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import {
   TeamAction, type TeamActionInjected, type TeamActionProps, type TeamActionResult,
@@ -69,9 +69,11 @@ function remoteFailure(message: string): { ok: false; error: { code: 'internal';
 }
 
 function props(actions: TeamActionInjected, sessionId: SessionId = SESSION): TeamActionProps {
+  const { hooks, ...face } = actions
   return {
     sessionId,
-    ...actions,
+    ...face,
+    useColorScheme: bindSnapshotSelector(hooks.colorScheme),
     t: makeTranslate(zh, commonZh),
   } as unknown as TeamActionProps
 }
@@ -111,7 +113,10 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
     // first wait instead of reloading underneath the assertions.
     waitForChange: () => new Promise(() => {}),
     openTeammate: () => Promise.resolve(),
-    theme: { subscribe: () => () => {}, colorScheme: () => 'dark', toggle: () => {} },
+    hooks: {
+      colorScheme: { getSnapshot: () => 'dark', subscribe: () => () => {} },
+    },
+    toggleTheme: () => {},
     ...overrides,
   }
 }
@@ -230,12 +235,11 @@ describe('TeamAction', () => {
       scheme = scheme === 'dark' ? 'light' : 'dark'
       notify()
     })
-    const theme = {
+    const colorScheme = {
       subscribe: (onChange: () => void) => { notify = onChange; return () => { notify = () => {} } },
-      colorScheme: () => scheme,
-      toggle,
+      getSnapshot: () => scheme,
     }
-    render(<TeamAction {...props(actions({ theme }))} standalone />)
+    render(<TeamAction {...props(actions({ hooks: { colorScheme }, toggleTheme: toggle }))} standalone />)
 
     // Dark offers the way back to light, and the label follows the new scheme.
     const button = await screen.findByRole('button', { name: zh.toLightTheme })
@@ -329,7 +333,9 @@ describe('TeamAction', () => {
     expect(card.dataset.expanded).toBe('false')
     fireEvent.pointerEnter(card, { pointerType: 'mouse' })
     expect(card.dataset.expanded).toBe('true')
-    fireEvent.pointerLeave(card, { pointerType: 'mouse' })
+    const roster = card.closest<HTMLElement>('[role="list"]')
+    if (roster === null) throw new Error('Team roster missing')
+    fireEvent.pointerLeave(roster, { pointerType: 'mouse' })
     expect(card.dataset.expanded).toBe('false')
     fireEvent.focus(worker)
     expect(card.dataset.expanded).toBe('true')
@@ -623,6 +629,9 @@ describe('TeamAction', () => {
       expect(current).toMatchObject({ revision: 6, status: 'pending' })
     })
     fireEvent.click(screen.getByRole('button', { name: /删除/u }))
+    expect(updateTask).toHaveBeenCalledTimes(5)
+    const confirmation = screen.getByRole('group', { name: `${zh.deleteConfirm}: Updated runtime` })
+    fireEvent.click(within(confirmation).getByRole('button', { name: zh.delete }))
     await waitFor(() => { expect(screen.queryByText('Updated runtime')).toBeNull() })
 
     expect(vi.mocked(updateTask).mock.calls.map(([, input]) => [input.action, input.expectedRevision]))
@@ -961,7 +970,7 @@ describe('TeamAction', () => {
     fireEvent.change(screen.getByPlaceholderText(zh.blockers), { target: { value: 'task-2' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => { expect(lateUpdate).toHaveBeenCalledTimes(2) })
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: zh.savingTask }).disabled).toBe(true)
     expect(screen.getByRole<HTMLButtonElement>('button', { name: '取消' }).disabled).toBe(true)
     third.rerender(<TeamAction {...props(actions(), 'next-session' as SessionId)} />)
     dependency.resolve(taskSuccess({ ...task, revision: 3, subject: 'Late dependency' }))

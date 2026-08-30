@@ -1,0 +1,11 @@
+# Desktop profile patch layer.
+#
+# `dsh-base` mounts the pi-ai multi-provider adapter dormant and the credential
+# store beside it, but no bundle mounts the authorization seam, so pi-ai's
+# `ctx.inject(['authorization'])` never resolves and its provider logins never
+# register. Mounting it here is what makes a subscription sign-in — the OAuth
+# grant pi-ai stores and refreshes through the credential store — reachable at
+# all. Providers themselves stay user settings, written by the Models page.
+- insert:
+    - id: authorization
+      name: '@deepseek-ai/dsh-authorization'

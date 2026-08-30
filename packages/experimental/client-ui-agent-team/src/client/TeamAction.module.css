@@ -40,30 +40,24 @@
 }
 
 .panel {
-  /*
-   * Light is the base and the dark rule below swaps it whole, keyed to the
-   * attribute the ThemePresenter writes. Only the ground, the ink, the shadow
-   * weights, and the ambient strength differ per theme: every other team token
-   * derives from those, so strokes, card washes, and the sheen follow a theme
-   * change without a second set of values to keep in step.
-   */
-  --team-ink: var(--dsw-static-neutral-900);
-  --team-navy: color-mix(in oklab, var(--dsw-static-blue-50) 74%, var(--dsw-static-neutral-00));
-  --team-surface: color-mix(in srgb, var(--dsw-static-neutral-00) 58%, transparent);
-  --team-surface-strong: color-mix(in srgb, var(--dsw-static-neutral-00) 80%, transparent);
-  --team-shadow: color-mix(in srgb, var(--dsw-static-neutral-1000) 10%, transparent);
-  --team-shadow-strong: color-mix(in srgb, var(--dsw-static-neutral-1000) 18%, transparent);
-  /* The ambient fields are a wash on light and the room's light source on dark. */
-  --team-ambient-orange: 0.3;
-  --team-ambient-blue: 0.24;
+  /* The theme owner supplies the palette modes; this feature only derives the
+     local presentation roles it needs from those semantic aliases. */
+  --team-ink: var(--dsw-alias-team-ink);
+  --team-navy: var(--dsw-alias-team-ground);
+  --team-surface: var(--dsw-alias-team-surface);
+  --team-surface-strong: var(--dsw-alias-team-surface-strong);
+  --team-shadow: var(--dsw-alias-team-shadow);
+  --team-shadow-strong: var(--dsw-alias-team-shadow-strong);
+  --team-ambient-orange: var(--dsw-alias-team-ambient-orange-opacity);
+  --team-ambient-blue: var(--dsw-alias-team-ambient-blue-opacity);
 
-  --team-ink-muted: color-mix(in srgb, var(--team-ink) 72%, transparent);
-  --team-ink-faint: color-mix(in srgb, var(--team-ink) 52%, transparent);
-  --team-orange: #ff7924;
-  --team-blue: var(--dsw-static-blue-500);
-  --team-stroke: color-mix(in srgb, var(--team-ink) 16%, transparent);
+  --team-ink-muted: var(--dsw-alias-team-ink-muted);
+  --team-ink-faint: var(--dsw-alias-team-ink-faint);
+  --team-orange: var(--dsw-alias-team-ambient-orange-core);
+  --team-blue: var(--dsw-alias-team-blue);
+  --team-stroke: var(--dsw-alias-team-stroke);
   --team-stroke-strong: color-mix(in srgb, var(--team-orange) 52%, transparent);
-  --team-danger: var(--dsw-static-red-400);
+  --team-danger: var(--dsw-alias-team-danger);
   /* Shimmer stops for this surface: the muted ink is the resting colour and the
      full ink is the travelling highlight, so the sweep stays inside the Team
      palette in both themes. */
@@ -91,20 +85,6 @@
   isolation: isolate;
 }
 
-:global(body[data-ds-dark-theme]) .panel {
-  --team-ink: var(--dsw-static-neutral-00);
-  --team-navy: color-mix(in oklab, var(--dsw-static-blue-950) 60%, var(--dsw-static-neutral-1000));
-  --team-surface: color-mix(in srgb, var(--dsw-static-blue-950) 34%, transparent);
-  --team-surface-strong: color-mix(in srgb, var(--dsw-static-blue-950) 52%, transparent);
-  --team-shadow: color-mix(in srgb, var(--dsw-static-neutral-1000) 25%, transparent);
-  --team-shadow-strong: color-mix(in srgb, var(--dsw-static-neutral-1000) 40%, transparent);
-  --team-ambient-orange: 0.82;
-  --team-ambient-blue: 0.72;
-  --team-ink-muted: color-mix(in srgb, var(--team-ink) 58%, transparent);
-  --team-ink-faint: color-mix(in srgb, var(--team-ink) 34%, transparent);
-  --team-stroke: color-mix(in srgb, var(--team-ink) 13%, transparent);
-}
-
 .ambient,
 .ambient > span {
   position: absolute;
@@ -128,8 +108,8 @@
   border-radius: 50%;
   background: radial-gradient(
     ellipse at center,
-    rgb(255 121 36 / 90%) 0%,
-    rgb(255 105 24 / 62%) 34%,
+    color-mix(in srgb, var(--dsw-alias-team-ambient-orange-core) 90%, transparent) 0%,
+    color-mix(in srgb, var(--dsw-alias-team-ambient-orange-edge) 62%, transparent) 34%,
     transparent 72%
   );
   opacity: var(--team-ambient-orange);
@@ -147,8 +127,8 @@
   border-radius: 50%;
   background: radial-gradient(
     ellipse at center,
-    rgb(255 117 30 / 72%),
-    rgb(255 91 16 / 38%) 42%,
+    color-mix(in srgb, var(--dsw-alias-team-ambient-orange-core) 72%, transparent),
+    color-mix(in srgb, var(--dsw-alias-team-ambient-orange-edge) 38%, transparent) 42%,
     transparent 74%
   );
   content: '';
@@ -218,7 +198,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 13px;
-  border: 1px solid color-mix(in srgb, var(--team-blue) 82%, white 8%);
+  border: 1px solid color-mix(in srgb, var(--team-blue) 82%, var(--team-ink) 8%);
   border-radius: 999px;
   background: color-mix(in srgb, var(--team-blue) 88%, transparent);
   box-shadow: inset 0 1px color-mix(in srgb, var(--team-ink) 7%, transparent);
@@ -261,6 +241,16 @@
   border-color: color-mix(in srgb, var(--team-ink) 24%, transparent);
   background: color-mix(in srgb, var(--team-ink) 9%, transparent);
   color: var(--team-ink);
+}
+
+.iconButton:disabled,
+.interruptButton:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.refreshing svg {
+  animation: team-refresh 900ms linear infinite;
 }
 
 .workspaceBody {
@@ -795,6 +785,10 @@
   background: color-mix(in srgb, var(--team-navy) 48%, transparent);
 }
 
+.taskPending {
+  border-color: color-mix(in srgb, var(--team-orange) 34%, transparent);
+}
+
 .taskTitle span {
   margin-left: auto;
   color: var(--team-ink-muted);
@@ -817,6 +811,26 @@
 .taskActions {
   flex-wrap: wrap;
   margin-top: 8px;
+}
+
+.deleteConfirm {
+  display: inline-flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--team-danger) 28%, transparent);
+  color: var(--team-danger);
+  font-size: 11px;
+}
+
+.deleteConfirm > span:first-child {
+  margin-right: auto;
+}
+
+.taskActions .dangerButton {
+  color: var(--team-danger);
 }
 
 .taskActions label {
@@ -975,6 +989,14 @@
   .memberCardActive {
     transform: none;
   }
+
+  .refreshing svg {
+    animation: none;
+  }
+}
+
+@keyframes team-refresh {
+  to { transform: rotate(1turn); }
 }
 
 @keyframes ambient-orange {

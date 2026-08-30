@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { IconPlusOutline16, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import { TeamAction, type TeamActionInjected } from './TeamAction.tsx'
@@ -18,7 +18,7 @@ export interface DesktopTeamRootInjected extends TeamActionInjected {
 
 /** The root surface receives global Session selectors from ui-session. */
 export type DesktopTeamRootProps =
-  PropsRuntime<'desktop.root'> & DesktopTeamRootInjected & PropsLocale<typeof NS>
+  PropsRuntime<'desktop.root'> & InjectFace<DesktopTeamRootInjected> & PropsLocale<typeof NS>
 
 /** Enter an existing Session, or create one before mounting the live Team view. */
 export function DesktopTeamRoot({ ensureSession, ...props }: DesktopTeamRootProps) {

@@ -75,6 +75,8 @@ body {
   --dsw-static-red-50: rgb(254, 242, 242);
   --dsw-static-red-600: rgb(236, 19, 19);
   --dsw-static-red-900: rgb(87, 12, 12);
+  --dsw-static-team-orange-400: rgb(255, 121, 36);
+  --dsw-static-team-orange-500: rgb(255, 105, 24);
 }
 
 body[data-ds-dark-theme] {
@@ -232,6 +234,22 @@ body {
   --dsw-alias-state-warn-tertiary: var(--dsw-static-amber-100);
   --dsw-alias-toast-bg: var(--dsw-static-neutral-bluish-800);
   --dsw-alias-tooltip-bg: var(--dsw-static-neutral-bluish-850);
+  --dsw-alias-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 74%, transparent);
+  --dsw-alias-team-ambient-blue-opacity: 0.24;
+  --dsw-alias-team-ambient-orange-core: var(--dsw-static-team-orange-400);
+  --dsw-alias-team-ambient-orange-edge: var(--dsw-static-team-orange-500);
+  --dsw-alias-team-ambient-orange-opacity: 0.3;
+  --dsw-alias-team-blue: var(--dsw-static-blue-500);
+  --dsw-alias-team-danger: var(--dsw-static-red-400);
+  --dsw-alias-team-ground: color-mix(in oklab, var(--dsw-static-blue-50) 74%, var(--dsw-static-neutral-bluish-00));
+  --dsw-alias-team-ink: var(--dsw-static-neutral-bluish-900);
+  --dsw-alias-team-ink-faint: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) 52%, transparent);
+  --dsw-alias-team-ink-muted: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) 72%, transparent);
+  --dsw-alias-team-shadow: color-mix(in srgb, var(--dsw-static-neutral-bluish-1000) 10%, transparent);
+  --dsw-alias-team-shadow-strong: color-mix(in srgb, var(--dsw-static-neutral-bluish-1000) 18%, transparent);
+  --dsw-alias-team-surface: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 58%, transparent);
+  --dsw-alias-team-surface-strong: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 80%, transparent);
+  --dsw-alias-team-stroke: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) 16%, transparent);
   --dsw-specific-bubble-highlight: var(--dsw-static-deepseek-200);
   --dsw-specific-bubble: var(--dsw-static-deepseek-50);
   --dsw-specific-input-major: var(--dsw-static-neutral-bluish-00);
@@ -324,6 +342,22 @@ body[data-ds-dark-theme] {
   --dsw-alias-state-warn-tertiary: var(--dsw-static-amber-900);
   --dsw-alias-toast-bg: var(--dsw-static-neutral-bluish-750);
   --dsw-alias-tooltip-bg: var(--dsw-static-neutral-bluish-750);
+  --dsw-alias-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-bluish-1000) 42%, transparent);
+  --dsw-alias-team-ambient-blue-opacity: 0.72;
+  --dsw-alias-team-ambient-orange-core: var(--dsw-static-team-orange-400);
+  --dsw-alias-team-ambient-orange-edge: var(--dsw-static-team-orange-500);
+  --dsw-alias-team-ambient-orange-opacity: 0.82;
+  --dsw-alias-team-blue: var(--dsw-static-blue-500);
+  --dsw-alias-team-danger: var(--dsw-static-red-400);
+  --dsw-alias-team-ground: color-mix(in oklab, var(--dsw-static-blue-950) 60%, var(--dsw-static-neutral-bluish-1000));
+  --dsw-alias-team-ink: var(--dsw-static-neutral-bluish-00);
+  --dsw-alias-team-ink-faint: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 34%, transparent);
+  --dsw-alias-team-ink-muted: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 58%, transparent);
+  --dsw-alias-team-shadow: color-mix(in srgb, var(--dsw-static-neutral-bluish-1000) 25%, transparent);
+  --dsw-alias-team-shadow-strong: color-mix(in srgb, var(--dsw-static-neutral-bluish-1000) 40%, transparent);
+  --dsw-alias-team-surface: color-mix(in srgb, var(--dsw-static-blue-950) 34%, transparent);
+  --dsw-alias-team-surface-strong: color-mix(in srgb, var(--dsw-static-blue-950) 52%, transparent);
+  --dsw-alias-team-stroke: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 13%, transparent);
   --dsw-specific-bubble-highlight: var(--dsw-static-neutral-bluish-750);
   --dsw-specific-bubble: var(--dsw-static-neutral-bluish-850);
   --dsw-specific-input-major: var(--dsw-static-neutral-bluish-850);

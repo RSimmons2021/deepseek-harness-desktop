@@ -33,11 +33,7 @@
    * full-column backdrop-filter costs a re-blend of the whole window every
    * frame.
    */
-  --dsh-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-00) 74%, transparent);
-}
-
-:global(body[data-ds-dark-theme]) .frame {
-  --dsh-desktop-chat-scrim: color-mix(in srgb, var(--dsw-static-neutral-1000) 42%, transparent);
+  --dsh-desktop-chat-scrim: var(--dsw-alias-desktop-chat-scrim);
 }
 
 /*
@@ -142,5 +138,11 @@
 
   .frame[data-session-blank] {
     grid-template-rows: 0 minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame {
+    transition: none;
   }
 }

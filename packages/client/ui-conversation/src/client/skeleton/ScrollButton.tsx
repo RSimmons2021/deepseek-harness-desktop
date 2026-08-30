@@ -16,6 +16,13 @@ import css from './ScrollButton.module.css'
 /** Distance from the floor still treated as pinned, in px. */
 const FLOOR_SLACK = 64
 
+/** Smooth scrolling is decorative, so reduced-motion readers jump directly. */
+function scrollBehavior(): ScrollBehavior {
+  // jsdom has no matchMedia despite lib.dom's non-optional declaration.
+  // oxlint-disable-next-line typescript/no-unnecessary-condition
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+}
+
 /** Scroll-button props: the scroller to follow and the localizer. */
 export interface ScrollButtonProps {
   /** Scroll container to watch and return to the end of. */
@@ -56,7 +63,7 @@ export function ScrollButton({ scroller, t }: ScrollButtonProps) {
       className={css.button}
       aria-label={t('scrollToLatest')}
       title={t('scrollToLatest')}
-      onClick={() => { scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' }) }}
+      onClick={() => { scroller.scrollTo({ top: scroller.scrollHeight, behavior: scrollBehavior() }) }}
     >
       <IconChevronDownOutline14 />
     </button>

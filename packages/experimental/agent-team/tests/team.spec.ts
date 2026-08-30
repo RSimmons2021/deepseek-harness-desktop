@@ -909,11 +909,12 @@ describe('Team Remote API', () => {
       ok: true,
       value: { member: { name: 'writer' } },
     })
-    expect(spawn).toHaveBeenCalledWith(lead, expect.objectContaining({
+    const spawnRequest = spawn.mock.calls[0]?.[1]
+    expect(spawnRequest).toMatchObject({
       prompt: [{ type: 'text', text: 'go' }],
       provider: 'fork',
-      signal: expect.any(AbortSignal),
-    }))
+    })
+    expect(spawnRequest?.signal).toBeInstanceOf(AbortSignal)
     await expect(ctx.agentTeams.remoteSpawnTeammate(lead, request)).resolves.toEqual({
       ok: false,
       error: { code: 'team-rejected', message: 'name taken' },
@@ -939,12 +940,13 @@ describe('Team Remote API', () => {
       ok: true,
       value: { status: 'accepted' },
     })
-    expect(send).toHaveBeenCalledWith(lead, expect.objectContaining({
+    const sendRequest = send.mock.calls[0]?.[1]
+    expect(sendRequest).toMatchObject({
       target: 'editor',
       content: [{ type: 'text', text: 'ship it' }],
       delivery: 'quiet',
-      signal: expect.any(AbortSignal),
-    }))
+    })
+    expect(sendRequest?.signal).toBeInstanceOf(AbortSignal)
     await expect(ctx.agentTeams.remoteSendMessage(lead, request)).resolves.toEqual({
       ok: false,
       error: { code: 'team-rejected', message: 'no such teammate' },

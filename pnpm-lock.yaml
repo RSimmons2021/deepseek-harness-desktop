@@ -153,6 +153,9 @@ importers:
       '@deepseek-ai/dsh-app-boot':
         specifier: workspace:^
         version: link:../../packages/boot/app-boot
+      '@deepseek-ai/dsh-authorization':
+        specifier: workspace:^
+        version: link:../../packages/credentials/authorization
       '@deepseek-ai/dsh-base':
         specifier: workspace:^
         version: link:../../packages/bundle/base

@@ -6,6 +6,7 @@ import type {
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
 import type {} from '@deepseek-ai/dsh-experimental-agent-team/remote'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -48,16 +49,16 @@ function registerUi(ctx: ClientContext): void {
   // Appearance face for the workspace toolbar. The runtime owns the preference
   // and its persistence; this only reads the resolved scheme and writes the
   // opposite one, so the control never invents a third source of theme state.
-  const theme = {
-    subscribe: (onChange: () => void): (() => void) => ctx.on('theme/change', () => { onChange() }),
-    colorScheme: (): 'light' | 'dark' => ctx.theme.getTheme().active.colorScheme,
-    toggle: (): void => {
-      ctx.theme.setTheme(ctx.theme.getTheme().active.colorScheme === 'dark' ? 'light' : 'dark')
-    },
+  const colorScheme: HostObservable<'light' | 'dark'> = {
+    getSnapshot: () => ctx.theme.getTheme().active.colorScheme,
+    subscribe: onChange => ctx.on('theme/change', () => { onChange() }),
   }
 
   const actions: TeamActionInjected = {
-    theme,
+    hooks: { colorScheme },
+    toggleTheme: () => {
+      ctx.theme.setTheme(ctx.theme.getTheme().active.colorScheme === 'dark' ? 'light' : 'dark')
+    },
     async load(sessionId): Promise<TeamActionResult<TeamView>> {
       return await ctx.remote.agentTeams.view(leadSessionId(sessionId))
     },
@@ -97,6 +98,9 @@ function registerUi(ctx: ClientContext): void {
   }
 
   if (isDesktopSurface()) {
+    // The desktop artwork is designed as a dark workspace. Resolve the default
+    // `system` preference once, then leave every explicit user choice alone.
+    if (ctx.theme.getTheme().preference === 'system') ctx.theme.setTheme('dark')
     const desktopActions: DesktopTeamRootInjected = {
       ...actions,
       ensureSession: async () => {

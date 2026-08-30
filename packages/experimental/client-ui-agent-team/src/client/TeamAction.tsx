@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import {
   AnimatePresence, motion, useReducedMotion, type Transition,
 } from 'motion/react'
@@ -24,7 +24,9 @@ import {
   IconNewChatOutline16, IconRefreshOutline14, IconTrashOutline16,
   IconUserOutline16, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {
+  HostObservable, InjectFace, PropsLocale, PropsRuntime,
+} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { Loader } from './Loader.tsx'
 import { TextShimmer } from './TextShimmer.tsx'
@@ -46,19 +48,14 @@ export type TeamSpawnActionResult = RemoteResult<TeamSpawnMutationResult>
 /** Generated Remote result whose business value preserves Team message rejections. */
 export type TeamMessageActionResult = RemoteResult<TeamMessageMutationResult>
 
-/** Appearance face the workspace toolbar reads and writes. */
-export interface TeamThemeFace {
-  /** Subscribe to theme changes; returns the unsubscribe. */
-  subscribe: (onChange: () => void) => () => void
-  /** The resolved scheme now in effect (`system` already resolved). */
-  colorScheme: () => 'light' | 'dark'
-  /** Write the opposite scheme as the durable preference. */
-  toggle: () => void
-}
-
 /** Business actions injected by the browser plugin. */
 export interface TeamActionInjected {
-  theme: TeamThemeFace
+  hooks: {
+    /** Resolved appearance (`system` already mapped to light or dark). */
+    colorScheme: HostObservable<'light' | 'dark'>
+  }
+  /** Write the opposite appearance as the durable preference. */
+  toggleTheme: () => void
   load: (sessionId: SessionId) => Promise<TeamActionResult<TeamView>>
   createTask: (sessionId: SessionId, input: {
     subject: string
@@ -96,13 +93,14 @@ export interface TeamActionInjected {
 
 /** Full props of the Team conversation-header action. */
 export type TeamActionProps =
-  PropsRuntime<'conversation.session.header.actions'> & TeamActionInjected & PropsLocale<typeof NS>
+  PropsRuntime<'conversation.session.header.actions'> & InjectFace<TeamActionInjected> & PropsLocale<typeof NS>
 
 /** Props shared by the header action and the desktop-owned workspace surface. */
 export type TeamSurfaceProps = Pick<
   TeamActionProps,
   | 'sessionId' | 'load' | 'createTask' | 'updateTask' | 'spawnTeammate'
-  | 'sendMessage' | 'interrupt' | 'waitForChange' | 'openTeammate' | 'theme' | 't'
+  | 'sendMessage' | 'interrupt' | 'waitForChange' | 'openTeammate'
+  | 'useColorScheme' | 'toggleTheme' | 't'
 > & {
   /** Keep the designed Team workspace mounted as the application surface. */
   standalone?: boolean
@@ -170,9 +168,9 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
   sessionId, load, createTask, updateTask, spawnTeammate, sendMessage, interrupt, waitForChange,
-  openTeammate, theme, t, standalone = false,
+  openTeammate, useColorScheme, toggleTheme, t, standalone = false,
 }: TeamSurfaceProps) {
-  const colorScheme = useSyncExternalStore(theme.subscribe, theme.colorScheme)
+  const colorScheme = useColorScheme(scheme => scheme)
   const [open, setOpen] = useState(standalone)
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<TeamView | null>(null)
@@ -182,6 +180,7 @@ export function TeamAction({
   const [editing, setEditing] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<Draft>(EMPTY_DRAFT)
   const [pendingTasks, setPendingTasks] = useState<ReadonlySet<string>>(() => new Set())
+  const [confirmingDelete, setConfirmingDelete] = useState<TeamTaskId | null>(null)
   const [activeMemberId, setActiveMemberId] = useState<SessionId | null>(null)
   const [ambientPaused, setAmbientPaused] = useState(false)
   const [spawning, setSpawning] = useState(false)
@@ -190,6 +189,7 @@ export function TeamAction({
   const [messaging, setMessaging] = useState<SessionId | null>(null)
   const [messageDraft, setMessageDraft] = useState<MessageDraft>(EMPTY_MESSAGE)
   const [messagePending, setMessagePending] = useState(false)
+  const [interruptingMemberId, setInterruptingMemberId] = useState<SessionId | null>(null)
   // Acknowledgement for the two actions whose effect is not otherwise visible
   // on the card: an interrupt that lands between polls, and a queued message.
   const [notice, setNotice] = useState<string | null>(null)
@@ -209,6 +209,7 @@ export function TeamAction({
     setEditing(null)
     setEditDraft(EMPTY_DRAFT)
     setPendingTasks(new Set())
+    setConfirmingDelete(null)
     setActiveMemberId(null)
     setSpawning(false)
     setSpawnDraft(EMPTY_SPAWN)
@@ -216,6 +217,7 @@ export function TeamAction({
     setMessaging(null)
     setMessageDraft(EMPTY_MESSAGE)
     setMessagePending(false)
+    setInterruptingMemberId(null)
     setNotice(null)
   }, [sessionId, standalone])
 
@@ -269,17 +271,17 @@ export function TeamAction({
   useEffect(() => {
     if (!open) return
     const requestedSession = sessionId
-    let stopped = false
+    const lifecycle = { stopped: false }
     const follow = async (): Promise<void> => {
-      while (!stopped) {
+      while (!lifecycle.stopped) {
         const waited = await waitForChange(requestedSession, LIVE_WAIT_MS)
-        if (stopped || sessionRef.current !== requestedSession) return
+        if (lifecycle.stopped || sessionRef.current !== requestedSession) return
         if (!waited.ok) return
         if (!waited.value.timedOut) await refresh()
       }
     }
     void follow()
-    return () => { stopped = true }
+    return () => { lifecycle.stopped = true }
   }, [open, refresh, sessionId, waitForChange])
 
   const submitSpawn = useCallback(async (): Promise<void> => {
@@ -338,21 +340,26 @@ export function TeamAction({
     }
   }, [messageDraft, refresh, sendMessage, sessionId, t])
 
-  const stopTeammate = useCallback(async (targetName: string): Promise<void> => {
+  const stopTeammate = useCallback(async (member: TeamRosterMember): Promise<void> => {
     const requestedSession = sessionId
-    const result = await interrupt(requestedSession, targetName)
-    if (sessionRef.current !== requestedSession) return
-    if (!result.ok) {
-      setError(failureText(result.error))
-      return
+    setInterruptingMemberId(member.id)
+    try {
+      const result = await interrupt(requestedSession, member.name)
+      if (sessionRef.current !== requestedSession) return
+      if (!result.ok) {
+        setError(failureText(result.error))
+        return
+      }
+      if (!result.value.ok) {
+        setError(failureText(result.value.error))
+        return
+      }
+      setError(null)
+      setNotice(t('interrupted'))
+      await refresh()
+    } finally {
+      if (sessionRef.current === requestedSession) setInterruptingMemberId(null)
     }
-    if (!result.value.ok) {
-      setError(failureText(result.value.error))
-      return
-    }
-    setError(null)
-    setNotice(t('interrupted'))
-    await refresh()
   }, [interrupt, refresh, sessionId, t])
 
   const invalidateRefresh = useCallback((): void => {
@@ -527,7 +534,7 @@ export function TeamAction({
                         type="button"
                         className={css.iconButton}
                         aria-label={t(colorScheme === 'dark' ? 'toLightTheme' : 'toDarkTheme')}
-                        onClick={() => { theme.toggle() }}
+                        onClick={toggleTheme}
                       >
                         {colorScheme === 'dark' ? <IconLightOutline16 size={14} /> : <IconDarkOutline16 size={14} />}
                       </button>
@@ -544,7 +551,13 @@ export function TeamAction({
                   )
                   : (
                     <>
-                      <button type="button" className={css.iconButton} aria-label={t('refresh')} onClick={() => { void refresh() }}>
+                      <button
+                        type="button"
+                        className={loading ? `${css.iconButton} ${css.refreshing}` : css.iconButton}
+                        aria-label={t(loading ? 'loading' : 'refresh')}
+                        aria-busy={loading || undefined}
+                        onClick={() => { void refresh() }}
+                      >
                         <IconRefreshOutline14 />
                       </button>
                       <button type="button" className={css.iconButton} aria-label={t('close')} onClick={() => { setOpen(false) }}>
@@ -571,7 +584,13 @@ export function TeamAction({
                     <h3 id="agent-team-roster-heading">{t('roster')}</h3>
                     <span className={css.sectionRule} />
                   </div>
-                  <div className={css.roster} role="list">
+                  <div
+                    className={css.roster}
+                    role="list"
+                    onPointerLeave={(event) => {
+                      if (event.pointerType === 'mouse') setActiveMemberId(null)
+                    }}
+                  >
                     {view.members.map((member, index) => {
                       const active = member.id === activeMemberId
                       const assigned = view.tasks.filter(task => task.ownerName === member.name)
@@ -599,11 +618,10 @@ export function TeamAction({
                           onPointerEnter={(event) => {
                             if (event.pointerType === 'mouse') setActiveMemberId(member.id)
                           }}
-                          onPointerLeave={(event) => {
-                            if (event.pointerType === 'mouse') setActiveMemberId(null)
-                          }}
                           onFocusCapture={() => { setActiveMemberId(member.id) }}
-                          onBlurCapture={() => { setActiveMemberId(null) }}
+                          onBlurCapture={(event) => {
+                            if (!event.currentTarget.contains(event.relatedTarget)) setActiveMemberId(null)
+                          }}
                         >
                           {member.role === 'teammate' && canOpen && messaging !== member.id && (
                             <button
@@ -620,9 +638,11 @@ export function TeamAction({
                             <button
                               type="button"
                               className={css.interruptButton}
-                              aria-label={t('interrupt')}
+                              aria-label={t(interruptingMemberId === member.id ? 'interrupting' : 'interrupt')}
                               title={t('interrupt')}
-                              onClick={() => { void stopTeammate(member.name) }}
+                              aria-busy={interruptingMemberId === member.id || undefined}
+                              disabled={interruptingMemberId === member.id}
+                              onClick={() => { void stopTeammate(member) }}
                             >
                               <IconCloseOutline16 size={13} />
                             </button>
@@ -772,10 +792,18 @@ export function TeamAction({
                         />
                       )
                       : (
-                        <article key={task.id} className={css.task}>
+                        <article
+                          key={task.id}
+                          className={pendingTasks.has(task.id) ? `${css.task} ${css.taskPending}` : css.task}
+                          aria-busy={pendingTasks.has(task.id) || undefined}
+                        >
                           <div className={css.taskTitle}>
                             <strong>{task.subject}</strong>
-                            <span>{t(statusKey(task.status))}</span>
+                            <span>
+                              {pendingTasks.has(task.id)
+                                ? <TextShimmer duration={1.8} spread={10}>{t('updatingTask')}</TextShimmer>
+                                : t(statusKey(task.status))}
+                            </span>
                           </div>
                           <p>{task.description}</p>
                           <div className={css.meta}>
@@ -790,7 +818,7 @@ export function TeamAction({
                               {t('owner')}
                               <select
                                 value={task.ownerName ?? ''}
-                                disabled={pendingTasks.has(task.id) || task.status === 'completed'}
+                                disabled={pendingTasks.has(task.id) || task.status === 'completed' || confirmingDelete === task.id}
                                 onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                                   const owner = event.target.value
                                   void settleTask(task.id, () => updateTask(sessionId, {
@@ -805,28 +833,46 @@ export function TeamAction({
                                 {assignable.map(member => <option key={member.id} value={member.name}>{member.name}</option>)}
                               </select>
                             </label>
-                            <button type="button" onClick={() => { startEdit(task) }} disabled={pendingTasks.has(task.id)}>
+                            <button
+                              type="button"
+                              onClick={() => { startEdit(task) }}
+                              disabled={pendingTasks.has(task.id) || confirmingDelete === task.id}
+                            >
                               <IconEditOutline16 size={13} /> {t('edit')}
                             </button>
                             {task.status === 'in_progress' && (
-                              <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => {
+                              <button type="button" disabled={pendingTasks.has(task.id) || confirmingDelete === task.id} onClick={() => {
                                 void settleTask(task.id, () => updateTask(sessionId, {
                                   taskId: task.id, expectedRevision: task.revision, action: 'complete',
                                 }))
                               }}><IconCheckOutline14 /> {t('complete')}</button>
                             )}
                             {task.status === 'completed' && (
-                              <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => {
+                              <button type="button" disabled={pendingTasks.has(task.id) || confirmingDelete === task.id} onClick={() => {
                                 void settleTask(task.id, () => updateTask(sessionId, {
                                   taskId: task.id, expectedRevision: task.revision, action: 'reopen',
                                 }))
                               }}>{t('reopen')}</button>
                             )}
-                            <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => {
-                              void settleTask(task.id, () => updateTask(sessionId, {
-                                taskId: task.id, expectedRevision: task.revision, action: 'delete',
-                              }))
-                            }}><IconTrashOutline16 size={13} /> {t('delete')}</button>
+                            {confirmingDelete === task.id
+                              ? (
+                                <span className={css.deleteConfirm} role="group" aria-label={`${t('deleteConfirm')}: ${task.subject}`}>
+                                  <span>{t('deleteConfirm')}: <strong>{task.subject}</strong></span>
+                                  <button type="button" className={css.dangerButton} disabled={pendingTasks.has(task.id)} onClick={() => {
+                                    void settleTask(task.id, () => updateTask(sessionId, {
+                                      taskId: task.id, expectedRevision: task.revision, action: 'delete',
+                                    })).then((deleted) => { if (deleted !== undefined) setConfirmingDelete(null) })
+                                  }}><IconTrashOutline16 size={13} /> {t('delete')}</button>
+                                  <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => { setConfirmingDelete(null) }}>
+                                    {t('cancel')}
+                                  </button>
+                                </span>
+                              )
+                              : (
+                                <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => { setConfirmingDelete(task.id) }}>
+                                  <IconTrashOutline16 size={13} /> {t('delete')}
+                                </button>
+                              )}
                           </div>
                         </article>
                       ))}
@@ -867,7 +913,7 @@ interface MessageFormProps {
 /** In-card composer for one durable peer message to this teammate. */
 function MessageForm({ draft, setDraft, pending, onSend, onCancel, t }: MessageFormProps) {
   return (
-    <div className={`${css.form} ${css.spawnForm}`}>
+    <div className={`${css.form} ${css.spawnForm}`} aria-busy={pending || undefined}>
       <textarea
         value={draft.message}
         placeholder={t('messageText')}
@@ -884,7 +930,9 @@ function MessageForm({ draft, setDraft, pending, onSend, onCancel, t }: MessageF
         <option value="wakeup">{t('messageWakeup')}</option>
       </select>
       <div className={css.formActions}>
-        <button type="button" disabled={pending || draft.message.trim() === ''} onClick={onSend}>{t('send')}</button>
+        <button type="button" disabled={pending || draft.message.trim() === ''} onClick={onSend}>
+          {t(pending ? 'sending' : 'send')}
+        </button>
         <button type="button" disabled={pending} onClick={onCancel}>{t('cancel')}</button>
       </div>
     </div>
@@ -944,13 +992,15 @@ function SpawnForm({ draft, setDraft, pending, onSave, onCancel, t }: SpawnFormP
 function TaskForm({ draft, setDraft, pending, onSave, onCancel, t }: TaskFormProps) {
   const field = (key: keyof Draft, value: string): void => { setDraft({ ...draft, [key]: value }) }
   return (
-    <div className={css.form}>
+    <div className={css.form} aria-busy={pending || undefined}>
       <input value={draft.subject} placeholder={t('subject')} onChange={(event: ChangeEvent<HTMLInputElement>) => { field('subject', event.target.value) }} />
       <textarea value={draft.description} placeholder={t('description')} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => { field('description', event.target.value) }} />
       <input value={draft.blockers} placeholder={t('blockers')} onChange={(event: ChangeEvent<HTMLInputElement>) => { field('blockers', event.target.value) }} />
       <input value={draft.scopes} placeholder={t('scopes')} onChange={(event: ChangeEvent<HTMLInputElement>) => { field('scopes', event.target.value) }} />
       <div className={css.formActions}>
-        <button type="button" disabled={pending || draft.subject.trim() === '' || draft.description.trim() === ''} onClick={onSave}>{t('save')}</button>
+        <button type="button" disabled={pending || draft.subject.trim() === '' || draft.description.trim() === ''} onClick={onSave}>
+          {t(pending ? 'savingTask' : 'save')}
+        </button>
         <button type="button" disabled={pending} onClick={onCancel}>{t('cancel')}</button>
       </div>
     </div>

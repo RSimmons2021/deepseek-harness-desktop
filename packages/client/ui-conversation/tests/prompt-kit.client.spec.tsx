@@ -58,9 +58,19 @@ describe('ScrollButton', () => {
 
   it('appears once the reader leaves the floor and returns the scroller to the end', () => {
     const scroller = scrollerAt(500)
+    const scrollTo = vi.mocked(scroller.scrollTo)
     render(<ScrollButton scroller={scroller} t={t} />)
     fireEvent.click(screen.getByRole('button', { name: 'scrollToLatest' }))
-    expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' })
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' })
+  })
+
+  it('jumps to the end when the reader prefers reduced motion', () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })))
+    const scroller = scrollerAt(500)
+    const scrollTo = vi.mocked(scroller.scrollTo)
+    render(<ScrollButton scroller={scroller} t={t} />)
+    fireEvent.click(screen.getByRole('button', { name: 'scrollToLatest' }))
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: 'auto' })
   })
 
   it('renders nothing without a scroll container', () => {
