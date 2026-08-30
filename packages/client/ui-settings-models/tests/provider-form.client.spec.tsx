@@ -110,6 +110,13 @@ function scriptedFace(options: {
       describe: vi.fn(() => Promise.resolve(remoteOk({ writable: true, namespaces: [namespace] }))),
       mutate,
     },
+    authorization: {
+      list: vi.fn(() => Promise.resolve({ ok: true, value: [] })),
+      begin: vi.fn(),
+      poll: vi.fn(),
+      answer: vi.fn(),
+      cancel: vi.fn(),
+    },
     credentials: {
       describe: vi.fn((refs: string[]) => Promise.resolve(remoteOk(
         Object.fromEntries(refs.map(ref => [ref, { configured: false, writable: true }])),

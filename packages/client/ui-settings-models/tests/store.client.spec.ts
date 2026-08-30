@@ -91,6 +91,13 @@ function api(overrides: {
         ?? (() => Promise.resolve(remoteOk({ writable: true, hasDocument: false, namespaces: NAMESPACES }))),
       mutate: () => Promise.resolve(remoteFail('the store spec issues no writes')),
     },
+    authorization: {
+      list: () => Promise.resolve({ ok: true, value: [] }),
+      begin: () => Promise.resolve({ ok: true, value: { key: '', phase: 'idle' } }),
+      poll: () => Promise.resolve({ ok: true, value: { key: '', phase: 'idle' } }),
+      answer: () => Promise.resolve({ ok: true, value: { key: '', phase: 'idle' } }),
+      cancel: () => Promise.resolve({ ok: true, value: { key: '', phase: 'idle' } }),
+    },
     credentials: {
       describe: (refs: readonly string[]) => {
         seenRefs.push([...refs])

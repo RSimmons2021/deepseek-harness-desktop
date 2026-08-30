@@ -19,6 +19,7 @@ import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-sl
 // Type-only: pulls this package's SlotMap merge (the two Models child slots).
 import type {} from './slot-contract.ts'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
+import { SignInCard } from './SignInCard.tsx'
 import { deriveKeyRef, messageOf, protocolChoices, providerUsable } from './store.ts'
 import type { ModelsSettingsStore, ModelsWire, ProviderRow } from './store.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
@@ -543,6 +544,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
               </div>
             )}
       </div>
+      <SignInCard api={api.authorization} t={t} readOnly={!state.writable} />
       {renderSlot('settings.models.footer', {})}
       <Modal
         open={deleteTarget !== undefined}

@@ -115,6 +115,13 @@ function harness(options: {
       })),
       mutate,
     },
+    authorization: {
+      list: vi.fn(() => Promise.resolve({ ok: true, value: [] })),
+      begin: vi.fn(),
+      poll: vi.fn(),
+      answer: vi.fn(),
+      cancel: vi.fn(),
+    },
     credentials: {
       describe: () => options.describeFailure === undefined
         ? Promise.resolve(remoteOk({

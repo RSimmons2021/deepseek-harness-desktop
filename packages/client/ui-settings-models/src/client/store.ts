@@ -24,6 +24,12 @@ const PROBE_ROUTE = '\u0000probe'
 /** The credentials Remote methods the Models page reads and writes through. */
 export type ModelsCredentials = Pick<ClientRemote['credentials'], 'describe' | 'set' | 'unset'>
 
+/** Authorization Remote methods the Models page drives a sign-in through. */
+export type ModelsAuthorization = Pick<
+  ClientRemote['authorization'],
+  'list' | 'begin' | 'poll' | 'answer' | 'cancel'
+>
+
 /** LLM Remote methods used by the Models page. */
 export type ModelsLlm = Pick<
   ClientRemote['llm'],
@@ -81,6 +87,8 @@ export interface ModelsWire {
   settings: SettingsRemote
   /** Credential state and writes for the references provider profiles name. */
   credentials: ModelsCredentials
+  /** Interactive sign-in flows for providers that offer one. */
+  authorization: ModelsAuthorization
   /** Provider directory reads and draft endpoint discovery. */
   llm: ModelsLlm
 }

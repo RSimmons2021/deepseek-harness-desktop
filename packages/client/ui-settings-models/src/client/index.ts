@@ -61,7 +61,7 @@ export function refreshIfLoaded(controller: ModelsSettingsStore): void {
  * constrained; registration depends on each slot through `slots.inject()`.
  */
 export const inject = [
-  'slots', 'locale', 'remote', 'remote.credentials', 'remote.llm', 'remote.settings',
+  'slots', 'locale', 'remote', 'remote.authorization', 'remote.credentials', 'remote.llm', 'remote.settings',
   'settingsScope', 'settingsSchema',
 ]
 
@@ -77,6 +77,7 @@ export function apply(ctx: ClientContext): void {
   const schema = createSettingsSchemaOperations(ctx.settingsSchema)
   // Every configuration operation rides its owning Remote namespace.
   const wire: ModelsWire = {
+    authorization: ctx.remote.authorization,
     credentials: ctx.remote.credentials,
     llm: ctx.remote.llm,
     settings: ctx.remote.settings,

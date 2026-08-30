@@ -2,6 +2,17 @@
 
 /** English strings (the key-set source of truth for this pair). */
 export const en = {
+  signInTitle: 'Subscription sign-in',
+  signInDescription: 'Authorize a provider that offers a login; the harness credential store keeps the result.',
+  signIn: 'Sign in',
+  signInBusy: 'Sign-in in progress',
+  signInOpen: 'Open the authorization page',
+  signInAnswer: 'Submit',
+  signInCancel: 'Cancel sign-in',
+  signInAuthorized: 'Signed in',
+  signInCancelled: 'Sign-in cancelled',
+  signInFailed: 'Sign-in failed',
+  signInNone: 'No provider offers a sign-in right now.',
   nav: 'Models',
   title: 'Models',
   intro: 'Enter your API keys to use models from the following providers.',
@@ -106,6 +117,17 @@ export type ModelsKey = keyof typeof en
 
 /** Chinese strings (same keys as {@link en}). */
 export const zh: { [Key in keyof typeof en]: string } = {
+  signInTitle: '订阅登录',
+  signInDescription: '为提供登录的 provider 完成授权，凭据由 harness 凭据存储保管。',
+  signIn: '登录',
+  signInBusy: '登录进行中',
+  signInOpen: '打开授权页面',
+  signInAnswer: '提交',
+  signInCancel: '取消登录',
+  signInAuthorized: '登录成功',
+  signInCancelled: '登录已取消',
+  signInFailed: '登录失败',
+  signInNone: '当前没有可用的登录 provider。',
   nav: '模型',
   title: '模型',
   intro: '填入各提供方的 API 密钥即可使用其模型。',
