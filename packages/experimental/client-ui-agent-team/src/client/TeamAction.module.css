@@ -419,6 +419,27 @@
   opacity: 1;
 }
 
+.openButton {
+  position: absolute;
+  z-index: 2;
+  top: clamp(18px, 2.1vw, 34px);
+  right: calc(clamp(18px, 2.1vw, 34px) + 64px);
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--team-stroke);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--team-surface-strong) 82%, transparent);
+  color: var(--team-ink-muted);
+  cursor: pointer;
+}
+
+.openButton:hover {
+  border-color: var(--team-stroke-strong);
+  color: var(--team-ink);
+}
+
 .messageButton {
   position: absolute;
   z-index: 2;
@@ -725,8 +746,53 @@
 .spawnForm {
   width: 100%;
   min-width: 0;
-  padding: clamp(14px, 1.6vw, 22px);
+  padding: clamp(10px, 1.1vw, 18px);
   text-align: left;
+}
+
+/*
+ * A composing card takes the room its controls need rather than clipping them.
+ * Driven by the surface's own state rather than by `:has()`: the selector
+ * matches, but the card is not restyled when the form appears under it.
+ */
+.memberCard[data-team-composing] {
+  flex-grow: 2.2;
+}
+
+/*
+ * The room comes from the empty seats beside it, not from the other members:
+ * a composing card that squeezes its neighbours truncates the names the reader
+ * is composing about.
+ */
+.roster[data-team-composing] .openSeat:not([data-team-composing]) {
+  flex-grow: 0.45;
+}
+
+.form select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--team-stroke);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--team-navy) 72%, transparent);
+  color: var(--team-ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.formActions {
+  /* Send and cancel wrap onto their own line before they leave the card. */
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.spawnForm .formActions button {
+  flex: 1 1 auto;
+  justify-content: center;
+  border: 1px solid var(--team-stroke);
+  border-radius: 7px;
+  padding: 6px 8px;
 }
 
 .openSeatMark {

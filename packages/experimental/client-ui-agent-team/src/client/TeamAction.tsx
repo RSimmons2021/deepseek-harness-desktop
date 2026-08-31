@@ -304,6 +304,9 @@ export function TeamAction({
   const [pendingTasks, setPendingTasks] = useState<ReadonlySet<string>>(() => new Set())
   const [confirmingDelete, setConfirmingDelete] = useState<TeamTaskId | null>(null)
   const [activeMemberId, setActiveMemberId] = useState<SessionId | null>(null)
+  // A pinned card stays open until it is clicked again: hover alone is lost
+  // whenever the pointer ends up outside a card that is still growing under it.
+  const [pinnedMemberId, setPinnedMemberId] = useState<SessionId | null>(null)
   const [ambientPaused, setAmbientPaused] = useState(false)
   const [spawning, setSpawning] = useState(false)
   const [spawnDraft, setSpawnDraft] = useState<SpawnDraft>(EMPTY_SPAWN)
@@ -706,10 +709,6 @@ export function TeamAction({
               <h2>{t('workspaceTitle')}</h2>
               <p>{t('workspaceSubtitle')}</p>
             </div>
-            <div className={css.sessionBadge}>
-              <StateDot state="ongoing" />
-              <span>{t('activeSession')}</span>
-            </div>
             {(!standalone || !reduceMotion) && (
               <div className={css.toolbar}>
                 {standalone
@@ -772,12 +771,14 @@ export function TeamAction({
                   <div
                     className={css.roster}
                     role="list"
+                    data-team-composing={messaging !== null || spawning || undefined}
                     onPointerLeave={(event) => {
                       if (event.pointerType === 'mouse') setActiveMemberId(null)
                     }}
                   >
                     {view.members.map((member, index) => {
-                      const active = member.id === activeMemberId
+                      const active = member.id === pinnedMemberId
+                        || (pinnedMemberId === null && member.id === activeMemberId)
                       const assigned = view.tasks.filter(task => task.ownerName === member.name)
                       // Write scopes are advisory rather than locks, so an
                       // overlap is the one thing a member can silently do to
@@ -800,6 +801,7 @@ export function TeamAction({
                           role="listitem"
                           data-team-member-card={member.id}
                           data-expanded={active ? 'true' : 'false'}
+                          data-team-composing={messaging === member.id || undefined}
                           className={active ? `${css.memberCard} ${css.memberCardActive}` : css.memberCard}
                           onPointerEnter={(event) => {
                             if (event.pointerType === 'mouse') setActiveMemberId(member.id)
@@ -809,6 +811,19 @@ export function TeamAction({
                             if (!event.currentTarget.contains(event.relatedTarget)) setActiveMemberId(null)
                           }}
                         >
+                          {canOpen && messaging !== member.id && (
+                            <button
+                              type="button"
+                              className={css.openButton}
+                              aria-label={t('open')}
+                              title={t('open')}
+                              onClick={() => {
+                                void openTeammate(sessionId, member).catch((reason: unknown) => { setError(String(reason)) })
+                              }}
+                            >
+                              <IconUserOutline16 size={13} />
+                            </button>
+                          )}
                           {member.role === 'teammate' && canOpen && messaging !== member.id && (
                             <button
                               type="button"
@@ -848,10 +863,16 @@ export function TeamAction({
                               type="button"
                               className={css.memberButton}
                               aria-label={accessibleLabel}
-                              disabled={!canOpen}
-                              title={canOpen ? t('open') : undefined}
+                              aria-expanded={active}
+                              title={t(active ? 'collapse' : 'expand')}
                               onClick={() => {
-                                void openTeammate(sessionId, member).catch((reason: unknown) => { setError(String(reason)) })
+                                const release = pinnedMemberId === member.id
+                                setPinnedMemberId(release ? null : member.id)
+                                // Releasing also drops the hover preview: the
+                                // click that released it left the pointer and
+                                // the focus on the card, and either would hold
+                                // it open against the reader's intent.
+                                if (release) setActiveMemberId(null)
                               }}
                             >
                               <span className={css.memberTopline}>
@@ -918,7 +939,12 @@ export function TeamAction({
                       const addable = index === 0 && canDelegate
                       const locked = index === 0 && !canDelegate
                       return (
-                        <div key={`open-seat-${String(index)}`} role="listitem" className={`${css.memberCard} ${css.openSeat}`}>
+                        <div
+                          key={`open-seat-${String(index)}`}
+                          role="listitem"
+                          className={`${css.memberCard} ${css.openSeat}`}
+                          data-team-composing={(addable && spawning) || undefined}
+                        >
                           {addable && spawning && (
                             <SpawnForm
                               draft={spawnDraft}

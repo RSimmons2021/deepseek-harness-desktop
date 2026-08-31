@@ -154,14 +154,33 @@ describe('TeamAction', () => {
     })
   })
 
-  it('loads roster/task diagnostics on open and navigates a healthy teammate', async () => {
+  it('latches a card open on click and navigates from its own control', async () => {
     const openTeammate = vi.fn(() => Promise.resolve())
     render(<TeamAction {...props(actions({ openTeammate }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     const worker = await screen.findByRole('button', { name: /worker/u })
     expect(screen.getByText('write scopes overlap with task-2')).toBeTruthy()
+
+    // Clicking the card opens its detail and keeps it open; navigating away is
+    // a separate control, so a click can no longer leave the workspace by
+    // accident.
     fireEvent.click(worker)
+    expect(await screen.findByText(zh.assignedTasks)).toBeTruthy()
+    expect(worker.getAttribute('aria-expanded')).toBe('true')
+    expect(openTeammate).not.toHaveBeenCalled()
+
+    // A pinned card survives the pointer leaving the roster entirely.
+    const roster = worker.closest('[data-team-member-card]')?.parentElement
+    if (roster == null) throw new Error('the roster did not render')
+    fireEvent.pointerLeave(roster, { pointerType: 'mouse' })
+    expect(screen.getByText(zh.assignedTasks)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: zh.open }))
     await waitFor(() => { expect(openTeammate).toHaveBeenCalledWith(SESSION, view.members[1]) })
+
+    // Clicking the same card again releases it.
+    fireEvent.click(worker)
+    expect(worker.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('interrupts a running teammate and reloads the roster afterwards', async () => {
@@ -804,10 +823,13 @@ describe('TeamAction', () => {
     // Readiness is stated by the lane a task sits in, not repeated per card.
     expect(screen.getByText(zh.laneReady)).toBeTruthy()
     expect(screen.getByText(zh.laneBlocked)).toBeTruthy()
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: /failed-worker/u }).disabled).toBe(true)
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: /provisioning-worker/u }).disabled).toBe(true)
+    // Every card expands, including the unreachable ones — their detail is
+    // where the diagnostic lives. Only a healthy teammate offers navigation.
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /failed-worker/u }).disabled).toBe(false)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /provisioning-worker/u }).disabled).toBe(false)
+    expect(screen.getAllByRole('button', { name: zh.open })).toHaveLength(1)
 
-    fireEvent.click(screen.getByRole('button', { name: /^worker运行中/u }))
+    fireEvent.click(screen.getByRole('button', { name: zh.open }))
     expect(await screen.findByText('Error: navigation failed')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: zh.refresh }))
     await waitFor(() => { expect(load).toHaveBeenCalledTimes(2) })
