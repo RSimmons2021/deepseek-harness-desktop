@@ -20,6 +20,8 @@ const REMOTE: TypertRemoteContribution = {
 
 async function bench(options: {
   addressed?: boolean
+  colorScheme?: 'light' | 'dark'
+  preference?: string
   conflict?: boolean
   registrationFailure?: boolean
   remoteFailure?: 'view' | 'update'
@@ -66,6 +68,11 @@ async function bench(options: {
         : { ok: true as const, value: view })
     },
     createTask: answer('agentTeams/createTask', task),
+    spawnTeammate: answer('agentTeams/spawnTeammate', { ok: true, value: { member: view.members[0] } }),
+    sendMessage: answer('agentTeams/sendMessage', { ok: true, value: { messageId: 'm-1', status: 'accepted' } }),
+    activity: answer('agentTeams/activity', []),
+    interrupt: answer('agentTeams/interrupt', { ok: true, value: { previousStatus: 'running' } }),
+    waitForChange: answer('agentTeams/waitForChange', { timedOut: true }),
     updateTask: (...args: unknown[]) => {
       calls.push({ method: 'agentTeams/updateTask', args })
       if (options.remoteFailure === 'update') return Promise.resolve(failure)
@@ -106,9 +113,10 @@ async function bench(options: {
   })
   ctx.provide('conversation', {})
   ctx.provide('uiSession', {} as never)
+  let scheme: 'light' | 'dark' = options.colorScheme ?? 'dark'
   ctx.provide('theme', {
-    getTheme: () => ({ active: { colorScheme: 'dark' } }),
-    setTheme: (id: string) => { navigation.push(['theme', id]) },
+    getTheme: () => ({ active: { colorScheme: scheme }, preference: options.preference ?? 'dark' }),
+    setTheme: (id: 'light' | 'dark') => { scheme = id; navigation.push(['theme', id]) },
   } as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
   await ctx.plugin(SlotRegistry).await()
@@ -300,5 +308,46 @@ describe('ui-team browser plugin', () => {
 
   it('keeps the node half inert', () => {
     expect(() => { nodeApply() }).not.toThrow()
+  })
+
+  it('routes every remaining Team action through the Lead Session', async () => {
+    const b = await bench({ addressed: true })
+    const actions = (b.entry()!.inject as unknown as () => TeamActionInjected)()
+
+    await actions.spawnTeammate(CHILD, {
+      name: 'writer', description: 'writes', prompt: 'draft it', context: 'fresh',
+    })
+    await actions.sendMessage(CHILD, { target: 'writer', message: 'take it', delivery: 'quiet' })
+    await actions.activity(CHILD, 40)
+    await actions.interrupt(CHILD, 'writer')
+    await actions.waitForChange(CHILD, 10_000)
+
+    expect(b.calls.map(call => call.method)).toEqual([
+      'agentTeams/spawnTeammate', 'agentTeams/sendMessage', 'agentTeams/activity',
+      'agentTeams/interrupt', 'agentTeams/waitForChange',
+    ])
+    // Every one addresses the Lead, never the teammate conversation it was called from.
+    expect(b.calls.every(call => call.args[0] === SESSION)).toBe(true)
+    expect(b.calls.find(call => call.method === 'agentTeams/activity')?.args[1]).toBe(40)
+  })
+
+  it('reads the resolved appearance and writes the opposite one', async () => {
+    const b = await bench({ colorScheme: 'dark' })
+    const actions = (b.entry()!.inject as unknown as () => TeamActionInjected)()
+    expect(actions.hooks.colorScheme.getSnapshot()).toBe('dark')
+
+    const changes: number[] = []
+    const stop = actions.hooks.colorScheme.subscribe(() => { changes.push(changes.length) })
+    actions.toggleTheme()
+    expect(actions.hooks.colorScheme.getSnapshot()).toBe('light')
+    actions.toggleTheme()
+    expect(actions.hooks.colorScheme.getSnapshot()).toBe('dark')
+    expect(b.navigation).toEqual([['theme', 'light'], ['theme', 'dark']])
+
+    b.ctx.emit('theme/change', undefined as never)
+    expect(changes).toHaveLength(1)
+    stop()
+    b.ctx.emit('theme/change', undefined as never)
+    expect(changes).toHaveLength(1)
   })
 })

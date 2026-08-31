@@ -1,6 +1,6 @@
 /** Shared repository file discovery and line-oriented reference scanning. */
 
-import { globSync, readFileSync, realpathSync } from 'node:fs'
+import { globSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 
 /** One authored path plus its canonical target for symlink deduplication. */
@@ -33,6 +33,42 @@ export function isArchivedAgentNotePath(path: string): boolean {
  * @param isExcluded - optional predicate over each matched relative path.
  * @returns matched files in stable first-seen order.
  */
+/** Whether one pattern segment selects by name rather than matching literally. */
+function wildcarded(segment: string): boolean {
+  return /[*?[\]{}!]/.test(segment)
+}
+
+/**
+ * Expand one repository-relative glob to matched relative paths.
+ *
+ * A pattern ending in a literal filename is expanded as its directory prefix
+ * plus a probe for that name. Node's `globSync` walks a `**` segment into a
+ * FILE whose name equals the literal tail and throws `ENOTDIR`
+ * (`snapshots/**\/system-prompt.expected.md` against a real file of that name),
+ * so the directories it does report are asked for the name instead.
+ * @param root - absolute repository root.
+ * @param pattern - repository-relative glob.
+ * @returns matched relative paths in glob order.
+ */
+function expandPattern(root: string, pattern: string): string[] {
+  const cut = pattern.lastIndexOf('/')
+  const tail = pattern.slice(cut + 1)
+  if (cut < 0 || wildcarded(tail)) return [...globSync(pattern, { cwd: root })]
+  const prefix = pattern.slice(0, cut)
+  const candidates = wildcarded(prefix)
+    ? globSync(`${prefix}/`, { cwd: root }).map(directory => `${directory.split(sep).join('/').replace(/\/$/, '')}/${tail}`)
+    : [pattern]
+  return candidates.filter((candidate) => {
+    try {
+      return statSync(resolve(root, candidate)).isFile()
+    } catch {
+      // The probed directory does not hold this name; every other stat failure
+      // on a path glob just reported is a race no gate can act on either.
+      return false
+    }
+  })
+}
+
 export function uniqueRepoFiles(
   root: string,
   patterns: readonly string[],
@@ -41,7 +77,7 @@ export function uniqueRepoFiles(
   const seen = new Set<string>()
   const files: RepoFile[] = []
   for (const pattern of patterns) {
-    for (const match of globSync(pattern, { cwd: root })) {
+    for (const match of expandPattern(root, pattern)) {
       const repoPath = match.split(sep).join('/')
       if (isExcluded(repoPath)) continue
       const abs = resolve(root, repoPath)

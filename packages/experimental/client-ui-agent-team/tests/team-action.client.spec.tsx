@@ -4,12 +4,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
-  TeamActivityEntry, TeamTaskId, TeamTaskView as TeamTask, TeamView,
+  TeamActivityEntry, TeamTaskId, TeamTaskView as TeamTask, TeamView, TeamWaitResult,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import {
   TeamAction, type TeamActionInjected, type TeamActionProps, type TeamActionResult,
+  type TeamInterruptActionResult, type TeamMessageActionResult, type TeamSpawnActionResult,
   type TeamTaskActionResult,
 } from '../src/client/TeamAction.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -1084,5 +1085,271 @@ describe('TeamAction', () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(screen.queryByText('Stale entry')).toBeNull()
+  })
+
+  it('reports every refused spawn and leaves a spawn for a past session alone', async () => {
+    const spawn = vi.fn()
+      .mockResolvedValueOnce(remoteFailure('spawn transport is down'))
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { ok: false, error: { code: 'team-rejected', message: 'name is taken' } },
+      })
+    const open = async (): Promise<void> => {
+      fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+      await screen.findByText('Implement runtime')
+      fireEvent.click(screen.getByRole('button', { name: zh.addTeammate }))
+      fireEvent.change(screen.getByPlaceholderText(zh.teammateName), { target: { value: 'writer' } })
+      fireEvent.change(screen.getByPlaceholderText(zh.teammateDescription), { target: { value: 'writes' } })
+      fireEvent.change(screen.getByPlaceholderText(zh.teammatePrompt), { target: { value: 'draft it' } })
+    }
+    const injected = actions({ spawnTeammate: spawn })
+    render(<TeamAction {...props(injected)} />)
+    await open()
+    // A fork teammate is the other context the form offers.
+    fireEvent.change(screen.getByLabelText(zh.teammatePrompt), { target: { value: 'fork' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
+    expect((await screen.findByRole('alert')).textContent).toContain('spawn transport is down')
+    expect(spawn.mock.calls[0]?.[1]).toMatchObject({ name: 'writer', context: 'fork' })
+
+    fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('name is taken')
+    })
+    // Cancelling clears the draft rather than leaving it half-filled.
+    fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
+    expect(screen.queryByPlaceholderText(zh.teammateName)).toBeNull()
+  })
+
+  it('drops a spawn result that lands after the conversation switches sessions', async () => {
+    const late = Promise.withResolvers<TeamSpawnActionResult>()
+    const injected = actions({ spawnTeammate: () => late.promise })
+    const rendered = render(<TeamAction {...props(injected)} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    fireEvent.click(screen.getByRole('button', { name: zh.addTeammate }))
+    fireEvent.change(screen.getByPlaceholderText(zh.teammateName), { target: { value: 'writer' } })
+    fireEvent.change(screen.getByPlaceholderText(zh.teammateDescription), { target: { value: 'writes' } })
+    fireEvent.change(screen.getByPlaceholderText(zh.teammatePrompt), { target: { value: 'draft it' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
+
+    rendered.rerender(<TeamAction {...props(injected, 'next-session' as SessionId)} />)
+    late.resolve(remoteFailure('too late to matter'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(screen.queryByText(/too late to matter/u)).toBeNull()
+  })
+
+  it('reports every refused peer message and keeps a wakeup delivery', async () => {
+    const send = vi.fn()
+      .mockResolvedValueOnce(remoteFailure('message transport is down'))
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { ok: false, error: { code: 'team-rejected', message: 'mailbox is full' } },
+      })
+    render(<TeamAction {...props(actions({ sendMessage: send }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    fireEvent.click(screen.getByRole('button', { name: zh.message }))
+    fireEvent.change(screen.getByPlaceholderText(zh.messageText), { target: { value: 'take task-1' } })
+    fireEvent.change(screen.getByLabelText(zh.messageText), { target: { value: 'wakeup' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.send }))
+    expect((await screen.findByRole('alert')).textContent).toContain('message transport is down')
+    expect(send.mock.calls[0]?.[1]).toMatchObject({ target: 'worker', delivery: 'wakeup' })
+
+    fireEvent.click(screen.getByRole('button', { name: zh.send }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('mailbox is full')
+    })
+    fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
+    expect(screen.queryByPlaceholderText(zh.messageText)).toBeNull()
+  })
+
+  it('drops a message result that lands after the conversation switches sessions', async () => {
+    const late = Promise.withResolvers<TeamMessageActionResult>()
+    const injected = actions({ sendMessage: () => late.promise })
+    const rendered = render(<TeamAction {...props(injected)} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    fireEvent.click(screen.getByRole('button', { name: zh.message }))
+    fireEvent.change(screen.getByPlaceholderText(zh.messageText), { target: { value: 'take task-1' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.send }))
+
+    rendered.rerender(<TeamAction {...props(injected, 'next-session' as SessionId)} />)
+    late.resolve(remoteFailure('too late to matter'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(screen.queryByText(/too late to matter/u)).toBeNull()
+  })
+
+  it('reports every refused interrupt', async () => {
+    const running: TeamView = {
+      ...view,
+      members: [
+        view.members[0]!,
+        { ...view.members[1]!, status: 'running' },
+      ],
+    }
+    const stop = vi.fn()
+      .mockResolvedValueOnce(remoteFailure('interrupt transport is down'))
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { ok: false, error: { code: 'team-rejected', message: 'no such teammate' } },
+      })
+    render(<TeamAction {...props(actions({
+      load: () => Promise.resolve({ ok: true, value: running }),
+      interrupt: stop,
+    }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    fireEvent.click(screen.getByRole('button', { name: zh.interrupt }))
+    expect((await screen.findByRole('alert')).textContent).toContain('interrupt transport is down')
+    fireEvent.click(screen.getByRole('button', { name: zh.interrupt }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('no such teammate')
+    })
+    expect(stop).toHaveBeenCalledWith(SESSION, 'worker')
+  })
+
+  it('drops an interrupt result that lands after the conversation switches sessions', async () => {
+    const running: TeamView = {
+      ...view,
+      members: [view.members[0]!, { ...view.members[1]!, status: 'running' }],
+    }
+    const late = Promise.withResolvers<TeamInterruptActionResult>()
+    const injected = actions({
+      load: () => Promise.resolve({ ok: true, value: running }),
+      interrupt: () => late.promise,
+    })
+    const rendered = render(<TeamAction {...props(injected)} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    fireEvent.click(screen.getByRole('button', { name: zh.interrupt }))
+
+    rendered.rerender(<TeamAction {...props(injected, 'next-session' as SessionId)} />)
+    late.resolve(remoteFailure('too late to matter'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(screen.queryByText(/too late to matter/u)).toBeNull()
+  })
+
+  it('closes on Escape, and expands a card by pointer until the pointer leaves', async () => {
+    render(<TeamAction {...props(actions())} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    const roster = document.querySelector('[data-team-member-card]')?.parentElement
+    if (roster === null || roster === undefined) throw new Error('the roster did not render')
+    const card = roster.querySelector('[data-team-member-card]')
+    if (card === null) throw new Error('the roster has no cards')
+    fireEvent.pointerEnter(card, { pointerType: 'mouse' })
+    expect(await screen.findByText(zh.assignedTasks)).toBeTruthy()
+    fireEvent.pointerLeave(roster, { pointerType: 'mouse' })
+    await waitFor(() => { expect(screen.queryByText(zh.assignedTasks)).toBeNull() })
+    // A touch pointer synthesizes no hover, so the card stays collapsed.
+    fireEvent.pointerEnter(card, { pointerType: 'touch' })
+    expect(screen.queryByText(zh.assignedTasks)).toBeNull()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => { expect(screen.queryByText('Implement runtime')).toBeNull() })
+  })
+
+  it('confirms a deletion against the task it names', async () => {
+    const remove = vi.fn((_session: SessionId, _input: { action: string }) =>
+      Promise.resolve(taskSuccess({ ...task, revision: 2, status: 'deleted' })))
+    render(<TeamAction {...props(actions({ updateTask: remove }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(zh.delete, 'u') }))
+    const confirm = screen.getByRole('group', { name: `${zh.deleteConfirm}: Implement runtime` })
+    fireEvent.click(within(confirm).getByRole('button', { name: new RegExp(zh.delete, 'u') }))
+    await waitFor(() => { expect(remove).toHaveBeenCalledOnce() })
+    expect(remove.mock.calls[0]?.[1]).toMatchObject({ action: 'delete' })
+    await waitFor(() => { expect(screen.queryByRole('group')).toBeNull() })
+  })
+
+  it('keeps the expanded card while focus moves inside it, and ignores other keys', async () => {
+    render(<TeamAction {...props(actions())} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    const roster = document.querySelector('[data-team-member-card]')?.parentElement
+    const card = document.querySelector('[data-team-member-card]')
+    if (roster === null || roster === undefined || card === null) throw new Error('the roster did not render')
+
+    fireEvent.focus(card)
+    expect(await screen.findByText(zh.assignedTasks)).toBeTruthy()
+    // Focus moving between controls of the same card is not leaving it.
+    fireEvent.blur(card, { relatedTarget: card.querySelector('button') })
+    expect(screen.getByText(zh.assignedTasks)).toBeTruthy()
+    // A touch pointer leaving synthesizes no hover change either.
+    fireEvent.pointerLeave(roster, { pointerType: 'touch' })
+    expect(screen.getByText(zh.assignedTasks)).toBeTruthy()
+
+    fireEvent.keyDown(document, { key: 'Enter' })
+    expect(screen.getAllByText('Implement runtime').length).toBeGreaterThan(0)
+  })
+
+  it('holds the deletion open when it is refused, and drops it on cancel', async () => {
+    const remove = vi.fn(() => Promise.resolve(taskRejected('task is claimed')))
+    render(<TeamAction {...props(actions({ updateTask: remove }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(zh.delete, 'u') }))
+    const confirm = screen.getByRole('group', { name: `${zh.deleteConfirm}: Implement runtime` })
+    fireEvent.click(within(confirm).getByRole('button', { name: new RegExp(zh.delete, 'u') }))
+    await waitFor(() => { expect(remove).toHaveBeenCalledOnce() })
+    // A refused delete keeps the confirmation up, so the refusal has somewhere to be read.
+    expect(screen.getByRole('group')).toBeTruthy()
+    fireEvent.click(within(screen.getByRole('group')).getByRole('button', { name: zh.cancel }))
+    expect(screen.queryByRole('group')).toBeNull()
+  })
+
+  it('keeps quiet delivery and a fresh context as the drafts they start in', async () => {
+    const send = vi.fn((_session: SessionId, _request: { delivery: string }) => Promise.resolve({
+      ok: true as const, value: { ok: true as const, value: { messageId: 'm' as never, status: 'accepted' as const } },
+    }))
+    const spawn = vi.fn((_session: SessionId, _request: { context: string }) =>
+      Promise.resolve(remoteFailure('not reached')))
+    render(<TeamAction {...props(actions({ sendMessage: send, spawnTeammate: spawn }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    fireEvent.click(screen.getByRole('button', { name: zh.message }))
+    fireEvent.change(screen.getByPlaceholderText(zh.messageText), { target: { value: 'take task-1' } })
+    fireEvent.change(screen.getByLabelText(zh.messageText), { target: { value: 'wakeup' } })
+    fireEvent.change(screen.getByLabelText(zh.messageText), { target: { value: 'quiet' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.send }))
+    await waitFor(() => { expect(send).toHaveBeenCalledOnce() })
+    expect(send.mock.calls[0]?.[1]).toMatchObject({ delivery: 'quiet' })
+    expect(await screen.findByText(zh.messageQueued)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: zh.addTeammate }))
+    fireEvent.change(screen.getByPlaceholderText(zh.teammateName), { target: { value: 'writer' } })
+    fireEvent.change(screen.getByPlaceholderText(zh.teammateDescription), { target: { value: 'writes' } })
+    fireEvent.change(screen.getByPlaceholderText(zh.teammatePrompt), { target: { value: 'draft it' } })
+    fireEvent.change(screen.getByLabelText(zh.teammatePrompt), { target: { value: 'fork' } })
+    fireEvent.change(screen.getByLabelText(zh.teammatePrompt), { target: { value: 'fresh' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
+    await waitFor(() => { expect(spawn).toHaveBeenCalledOnce() })
+    expect(spawn.mock.calls[0]?.[1]).toMatchObject({ context: 'fresh' })
+  })
+
+  it('ends the live-update loop when the surface closes under an outstanding wait', async () => {
+    const wait = Promise.withResolvers<TeamActionResult<TeamWaitResult>>()
+    const load = vi.fn(() => Promise.resolve({ ok: true as const, value: view }))
+    render(<TeamAction {...props(actions({ load, waitForChange: () => wait.promise }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    expect(load).toHaveBeenCalledOnce()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => { expect(screen.queryByText('Implement runtime')).toBeNull() })
+    // The wait that was already outstanding reports a change nobody is watching.
+    wait.resolve({ ok: true, value: { timedOut: false } })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(load).toHaveBeenCalledOnce()
   })
 })

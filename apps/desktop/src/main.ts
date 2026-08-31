@@ -8,7 +8,7 @@ const DESKTOP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const REPOSITORY_ROOT = resolve(DESKTOP_ROOT, '../..')
 const CLI_ENTRY = join(REPOSITORY_ROOT, 'apps/cli/lib/bin.js')
 const DESKTOP_ICON = join(DESKTOP_ROOT, 'assets/icon.png')
-const DESKTOP_PATCH = join(DESKTOP_ROOT, 'profile.patch.yml')
+const DESKTOP_PATCH = join(DESKTOP_ROOT, 'assets/profile.patch.yml')
 const DESKTOP_PROFILE = 'desktop'
 const DESKTOP_PROFILE_BUNDLES = [
   '@deepseek-ai/dsh-base',

@@ -345,17 +345,21 @@ export function TeamAction({
   useEffect(() => {
     if (!open) return
     const requestedSession = sessionId
-    const lifecycle = { stopped: false }
+    const following = new AbortController()
+    // Read through a call: TypeScript keeps a property read narrowed across the
+    // await below, and the re-check exists because the surface can close while
+    // one wait is outstanding.
+    const stopped = (): boolean => following.signal.aborted
     const follow = async (): Promise<void> => {
-      while (!lifecycle.stopped) {
+      while (!stopped()) {
         const waited = await waitForChange(requestedSession, LIVE_WAIT_MS)
-        if (lifecycle.stopped || sessionRef.current !== requestedSession) return
+        if (stopped() || sessionRef.current !== requestedSession) return
         if (!waited.ok) return
         if (!waited.value.timedOut) await refresh()
       }
     }
     void follow()
-    return () => { lifecycle.stopped = true }
+    return () => { following.abort() }
   }, [open, refresh, sessionId, waitForChange])
 
   const submitSpawn = useCallback(async (): Promise<void> => {

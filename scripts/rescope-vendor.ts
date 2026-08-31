@@ -94,6 +94,13 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
   { file: 'apps/cli/tests/web-agent-presets.e2e.ts', upstream: ['cordis'] },
   { file: 'apps/web/tests/agent-preset-authoring.e2e.ts', upstream: ['cordis'] },
   { file: 'packages/preset/agent-presets/tests/session.spec.ts', upstream: ['cordis'] },
+  // `cordis/tree` is the Inspector's bridge observation topic — a wire name both
+  // ends agree on, not a package reference. Scoping it would rename the topic
+  // and leave the two halves talking past each other.
+  { file: 'packages/experimental/inspector/src/shared/bridge/messages/cordis.ts', upstream: ['cordis'] },
+  { file: 'packages/experimental/inspector/tests/cordis-query.host.spec.ts', upstream: ['cordis'] },
+  { file: 'packages/experimental/inspector/tests/cordis-tree.host.spec.ts', upstream: ['cordis'] },
+  { file: 'packages/experimental/inspector/tests/plugin.client.spec.ts', upstream: ['cordis'] },
   // The preset's own composition: its header comment and its system prompt name
   // the preset a model mounts, so the scoped name would send the model after an
   // id no roster reports.
@@ -255,15 +262,15 @@ const EXACT_EDITS: readonly ExactEdit[] = [
     // A plain fence listing the bundle's mounted tree: a bare token, no quotes.
     id: 'agent-spine-demo-mounted-tree',
     file: 'packages/examples/agent-spine-demo/README.md',
-    find: '@cordisjs/plugin-timer            timer service',
-    replace: '@deepseek-ai/cordis-plugin-timer  timer service',
+    find: '@cordisjs/plugin-timer                timer service',
+    replace: '@deepseek-ai/cordis-plugin-timer      timer service',
     expect: 1,
   },
   {
     id: 'agent-spine-demo-mounted-tree-zh',
     file: 'packages/examples/agent-spine-demo/README.zh.md',
-    find: '@cordisjs/plugin-timer            timer service',
-    replace: '@deepseek-ai/cordis-plugin-timer  timer service',
+    find: '@cordisjs/plugin-timer                timer service',
+    replace: '@deepseek-ai/cordis-plugin-timer      timer service',
     expect: 1,
   },
   {
@@ -306,30 +313,30 @@ const VENDORED_LIBRARY = /^@deepseek-ai\\/(cosmokit|schemastery)(\\/|$)/
     // paragraph above the invariant that says to rescope it.
     id: 'vendoring-cookbook-tree-comment',
     file: 'docs/cookbook/adding-a-vendored-package.md',
-    find: '  package.json     # from upstream; set "private": true, keep name/exports/type',
-    replace: '  package.json     # from upstream; set "private": true, rescope the name, keep exports/type',
+    find: '  package.json     # from upstream; keep name/exports/type (publishable release member, no private flag)',
+    replace: '  package.json     # from upstream; rescope the name, keep exports/type (publishable release member, no private flag)',
     expect: 1,
   },
   {
     id: 'vendoring-cookbook-tree-comment-zh',
     file: 'docs/cookbook/adding-a-vendored-package.zh.md',
-    find: '  package.json     # from upstream; set "private": true, keep name/exports/type',
-    replace: '  package.json     # from upstream; set "private": true, rescope the name, keep exports/type',
+    find: '  package.json     # from upstream; keep name/exports/type (publishable release member, no private flag)',
+    replace: '  package.json     # from upstream; rescope the name, keep exports/type (publishable release member, no private flag)',
     expect: 1,
   },
   {
     // The checklist told the next vendoring to keep upstream's name.
     id: 'vendoring-cookbook-name-invariant',
     file: 'docs/cookbook/adding-a-vendored-package.md',
-    find: "keep upstream's `name`/`version`/`exports`/`type`",
-    replace: "rescope the `name` ([mapping](../rescope.md)) while keeping upstream's `version`/`exports`/`type`",
+    find: "keep upstream's `name`/`exports`/`type`",
+    replace: "rescope the `name` ([mapping](../rescope.md)) while keeping upstream's `exports`/`type`",
     expect: 1,
   },
   {
     id: 'vendoring-cookbook-name-invariant-zh',
     file: 'docs/cookbook/adding-a-vendored-package.zh.md',
-    find: '保留上游的 `name`/`version`/`exports`/`type`',
-    replace: '改写 `name` 的 scope（[映射](../rescope.zh.md)），保留上游的 `version`/`exports`/`type`',
+    find: '保留上游的 `name`/`exports`/`type`',
+    replace: '改写 `name` 的 scope（[映射](../rescope.zh.md)），保留上游的 `exports`/`type`',
     expect: 1,
   },
   {

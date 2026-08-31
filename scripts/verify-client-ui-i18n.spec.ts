@@ -35,6 +35,15 @@ describe('Client UI i18n source check', () => {
     ])
   })
 
+  it('reads a copy token only as a whole name or a camelCase tail', () => {
+    expect(messages(`
+      const SPAWN = { context: 'fresh' }
+      const settingsTabs = ['overview']
+      const contextLabel = 'Fresh context'
+      const text = 'Nothing selected'
+    `)).toEqual(['overview', 'Fresh context', 'Nothing selected'])
+  })
+
   it('normalizes native separators before deriving a Client source root', () => {
     expect(clientSourceRoot('packages/extensions/sample/src/client/View.tsx'))
       .toBe('packages/extensions/sample/src/client')

@@ -15,7 +15,7 @@ pnpm install
 pnpm desktop
 ```
 
-该应用还会传入自己的 patch layer `profile.patch.yml`。`dsh-base` 以休眠方式挂载 pi-ai 多 provider adapter 及其旁的 credential store，但没有任何 bundle 挂载 authorization seam，因此 pi-ai 的 provider login 从不注册；该 patch 负责挂载它。实际运行哪些 provider 仍属用户设置 —— Models 页面会把它们写入 `$DSH_HOME/settings.yaml`，凭据则写入受管 credential store，而非进程环境。
+该应用还会传入自己的 patch layer `assets/profile.patch.yml`。`dsh-base` 以休眠方式挂载 pi-ai 多 provider adapter 及其旁的 credential store，但没有任何 bundle 挂载 authorization seam，因此 pi-ai 的 provider login 从不注册；该 patch 负责挂载它。实际运行哪些 provider 仍属用户设置 —— Models 页面会把它们写入 `$DSH_HOME/settings.yaml`，凭据则写入受管 credential store，而非进程环境。
 
 设置 `DSH_DESKTOP_WORKSPACE` 可让 Harness 针对 shell 初始 working directory 以外的目录启动。Desktop data 隔离在 Electron 的 per-user application-data directory 下。Renderer 不启用 Node integration，不提供 preload bridge，不授予 permission，且无法离开本地 Harness origin；外部 HTTP link 会在操作系统浏览器中打开。
 

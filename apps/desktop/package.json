@@ -14,8 +14,7 @@
   },
   "files": [
     "assets",
-    "lib",
-    "profile.patch.yml"
+    "lib"
   ],
   "scripts": {
     "build": "tsc -b && tsdown",

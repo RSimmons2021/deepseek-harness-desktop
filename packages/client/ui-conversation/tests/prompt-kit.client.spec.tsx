@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /** Behaviour of the two prompt-kit components adapted for the conversation column. */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { PromptSuggestion } from '../src/client/skeleton/PromptSuggestion.tsx'
 import { ScrollButton } from '../src/client/skeleton/ScrollButton.tsx'
@@ -37,28 +37,28 @@ describe('PromptSuggestion', () => {
   })
 })
 
-/** Build a scroller whose geometry the component reads. */
-function scrollerAt(distanceFromFloor: number): HTMLDivElement {
+/** Build a scroller whose geometry the component reads, beside its own scroll mock. */
+function scrollerAt(distanceFromFloor: number): { scroller: HTMLDivElement; scrollTo: Mock } {
   const el = document.createElement('div')
   Object.defineProperties(el, {
     scrollHeight: { value: 1000, configurable: true },
     clientHeight: { value: 400, configurable: true },
     scrollTop: { value: 600 - distanceFromFloor, configurable: true, writable: true },
   })
-  el.scrollTo = vi.fn() as never
+  const scrollTo = vi.fn()
+  el.scrollTo = scrollTo as never
   document.body.append(el)
-  return el
+  return { scroller: el, scrollTo }
 }
 
 describe('ScrollButton', () => {
   it('stays hidden while the transcript sits at its floor', () => {
-    render(<ScrollButton scroller={scrollerAt(0)} t={t} />)
+    render(<ScrollButton scroller={scrollerAt(0).scroller} t={t} />)
     expect(screen.queryByRole('button')).toBeNull()
   })
 
   it('appears once the reader leaves the floor and returns the scroller to the end', () => {
-    const scroller = scrollerAt(500)
-    const scrollTo = vi.mocked(scroller.scrollTo)
+    const { scroller, scrollTo } = scrollerAt(500)
     render(<ScrollButton scroller={scroller} t={t} />)
     fireEvent.click(screen.getByRole('button', { name: 'scrollToLatest' }))
     expect(scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' })
@@ -66,8 +66,7 @@ describe('ScrollButton', () => {
 
   it('jumps to the end when the reader prefers reduced motion', () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })))
-    const scroller = scrollerAt(500)
-    const scrollTo = vi.mocked(scroller.scrollTo)
+    const { scroller, scrollTo } = scrollerAt(500)
     render(<ScrollButton scroller={scroller} t={t} />)
     fireEvent.click(screen.getByRole('button', { name: 'scrollToLatest' }))
     expect(scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: 'auto' })

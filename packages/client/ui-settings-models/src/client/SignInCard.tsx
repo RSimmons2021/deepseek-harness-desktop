@@ -63,13 +63,19 @@ export function SignInCard({ api, t, readOnly, onAuthorized }: SignInCardProps) 
   useEffect(() => {
     if (state?.phase !== 'running') return
     const key = state.key
-    let stopped = false
+    // Unmounting ends the poll: the card owns the loop, and a settled attempt
+    // that lands after the card is gone has nothing left to render into.
+    const polling = new AbortController()
+    // Read through a call: TypeScript keeps a property read narrowed across the
+    // awaits below, and each re-check exists because the card can unmount while
+    // one is outstanding.
+    const stopped = (): boolean => polling.signal.aborted
     const tick = async (): Promise<void> => {
-      while (!stopped) {
+      while (!stopped()) {
         await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
-        if (stopped) return
+        if (stopped()) return
         const result = await api.poll(key)
-        if (stopped || !result.ok) return
+        if (stopped() || !result.ok) return
         setState(result.value)
         if (result.value.phase !== 'running') {
           // The record's scope names the owning plugin; the segment after it is
@@ -83,7 +89,7 @@ export function SignInCard({ api, t, readOnly, onAuthorized }: SignInCardProps) 
       }
     }
     void tick()
-    return () => { stopped = true }
+    return () => { polling.abort() }
   }, [api, loadFlows, onAuthorized, state?.phase, state?.key])
 
   const start = useCallback(async (flow: AuthorizationFlowView): Promise<void> => {

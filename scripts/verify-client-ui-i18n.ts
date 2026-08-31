@@ -32,8 +32,14 @@ const COPY_ATTRIBUTES = new Set([
 ])
 const COPY_ATTRIBUTE_SUFFIX = /(?:Aria|Copy|Description|Heading|Label|Message|Placeholder|Summary|Text|Title|Tooltip)$/
 
-const COPY_NAME = /(?:^|_)(?:aria|copy|description|empty|heading|label|message|placeholder|summary|text|title|tooltip)(?:s|_.*)?$/i
-const COPY_SUFFIX = /(?:aria|copy|description|empty|heading|label|labels|message|placeholder|summary|text|title|tooltip|tabs)$/i
+/** A copy token as the whole name, or after an underscore, in any case: `text`, `TABS`, `status_label`. */
+const COPY_NAME = /(?:^|_)(?:aria|copy|description|empty|heading|label|message|placeholder|summary|tab|text|title|tooltip)(?:s|_.*)?$/i
+/**
+ * A copy token as a camelCase tail: `runningSummary`, `closeLabel`. The capital
+ * is required, so a domain name that merely ends in one of these letters —
+ * `context` ends in "text" — is not read as copy.
+ */
+const COPY_SUFFIX = /(?:Aria|Copy|Description|Empty|Heading|Label|Labels|Message|Placeholder|Summary|Tabs|Text|Title|Tooltip)$/
 const IMMUTABLE_LANGUAGE_TOKENS = new Set([
   'Function',
   'K',

@@ -15,7 +15,7 @@ pnpm install
 pnpm desktop
 ```
 
-The application also passes its own patch layer, `profile.patch.yml`. `dsh-base` mounts the pi-ai multi-provider adapter dormant and the credential store beside it, but no bundle mounts the authorization seam, so pi-ai's provider logins never register; the patch mounts it. Which providers actually run stays user settings — the Models page writes them to `$DSH_HOME/settings.yaml`, and credentials to the managed credential store rather than the process environment.
+The application also passes its own patch layer, `assets/profile.patch.yml`. `dsh-base` mounts the pi-ai multi-provider adapter dormant and the credential store beside it, but no bundle mounts the authorization seam, so pi-ai's provider logins never register; the patch mounts it. Which providers actually run stays user settings — the Models page writes them to `$DSH_HOME/settings.yaml`, and credentials to the managed credential store rather than the process environment.
 
 Set `DSH_DESKTOP_WORKSPACE` to launch the Harness against a directory other than the shell's initial working directory. Desktop data is isolated under Electron's per-user application-data directory. The renderer has no Node integration, no preload bridge, no permission grants, and cannot navigate away from the local Harness origin; external HTTP links open in the operating system browser.
 
