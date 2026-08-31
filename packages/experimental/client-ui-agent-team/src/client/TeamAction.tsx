@@ -156,6 +156,13 @@ const EMPTY_SPAWN: SpawnDraft = { name: '', description: '', prompt: '', context
 /** Tiles the roster keeps on screen so a nearly empty Team still reads as a row. */
 const ROSTER_MIN_TILES = 4
 
+/**
+ * The expanded detail's closed geometry. Collapsing by height rather than only
+ * by opacity keeps the name and model line above it travelling with the detail
+ * instead of snapping when the element leaves the flow.
+ */
+const COLLAPSED_DETAILS = { opacity: 0, height: 0, marginTop: 0, paddingTop: 0 } as const
+
 /** Timeline entries kept on screen; the service caps one read at 200. */
 const ACTIVITY_LIMIT = 40
 
@@ -777,6 +784,7 @@ export function TeamAction({
                       // another's work. Surface it on the roster, not only
                       // inside the task it belongs to.
                       const overlapping = assigned.some(task => task.writeScopeWarnings.length > 0)
+                      const working = member.status === 'running' || member.status === 'provisioning'
                       const canOpen = member.role === 'teammate'
                           && member.status !== 'failed'
                           && member.status !== 'provisioning'
@@ -855,7 +863,11 @@ export function TeamAction({
                                     : t(memberStatusKey(member.status))}
                                 </span>
                               </span>
-                              <span className={`${css.memberGlyph} ${css[`memberGlyph${String(index % 4)}`]}`} aria-hidden="true">
+                              <span
+                                className={`${css.memberGlyph} ${css[`memberGlyph${String(index % 4)}`]}`}
+                                data-team-member-working={working || undefined}
+                                aria-hidden="true"
+                              >
                                 <IconUserOutline16 size={44} />
                               </span>
                               <span className={css.memberText}>
@@ -869,9 +881,9 @@ export function TeamAction({
                                 {active && (
                                   <motion.span
                                     className={css.memberDetails}
-                                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px)' }}
-                                    animate={{ opacity: 1, transform: 'translateY(0)' }}
-                                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(10px)' }}
+                                    initial={reduceMotion ? { opacity: 0 } : COLLAPSED_DETAILS}
+                                    animate={{ opacity: 1, height: 'auto', marginTop: 22, paddingTop: 15 }}
+                                    exit={reduceMotion ? { opacity: 0 } : COLLAPSED_DETAILS}
                                     transition={detailsTransition}
                                   >
                                     {overlapping && (

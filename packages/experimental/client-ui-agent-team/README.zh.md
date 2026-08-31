@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 检查并导航 roster
 
-打开 workspace 会调用 `agentTeams/view`。Roster card 展示持久 name、运行时 status、model、diagnostics 与当前 task ownership。Pointer hover 或键盘 focus 通过 shared-layout motion 展开一个 card，同时让相邻 card 保持空间连续性；touch input 不合成 hover，reduced-motion 偏好会移除空间动画。空余容量显示为不可交互的开放席位，不会伪造 Team member。展开的 card 还会 tail 该成员最近记录的工作 —— 它说的话、它运行的 tool，以及这些 tool 返回了什么，按最新在前并截断显示 —— 它跟随重新加载看板的同一个变化信号刷新，而不是自带计时器，并在 card 收起时立即丢弃。它还会在 roster 报告时说明该成员的投入 —— 轮次、模型与工具时间，以及输入、输出与缓存命中 token；只有当 provider 确实提供了缓存命中时才显示该项，因为此处的 0 与「没有缓存」是不同的事实。选择健康 teammate 时，系统刷新既有直接 child catalog，并打开普通的 `{ parentSessionId, childSessionId, mode: 'continuable' }` address。History 与后续人类 prompt 继续使用稳定 addressed-subagent 会话路径；本包不会添加 Team 专用 address 字段。
+打开 workspace 会调用 `agentTeams/view`。Roster card 展示持久 name、运行时 status、model、diagnostics 与当前 task ownership。Pointer hover 或键盘 focus 通过 shared-layout motion 展开一个 card，同时让相邻 card 保持空间连续性；touch input 不合成 hover，reduced-motion 偏好会移除空间动画。card 展开的详情按高度而非仅按透明度开合，因此其上方的名称与模型行会随之移动，而不是在该元素离开布局流时突然跳位。处于 running 或 provisioning 的成员会让其 glyph 动起来 —— 内环扫描、标记绕行、并有一圈涟漪扩散而出 —— 因此 roster 上的动效意味着确有工作在进行，而不是对每张 card 一视同仁的装饰；idle、failed 与 inactive 的成员保持静止图形，而 reduced motion 会让它们全部静止。空余容量显示为不可交互的开放席位，不会伪造 Team member。展开的 card 还会 tail 该成员最近记录的工作 —— 它说的话、它运行的 tool，以及这些 tool 返回了什么，按最新在前并截断显示 —— 它跟随重新加载看板的同一个变化信号刷新，而不是自带计时器，并在 card 收起时立即丢弃。它还会在 roster 报告时说明该成员的投入 —— 轮次、模型与工具时间，以及输入、输出与缓存命中 token；只有当 provider 确实提供了缓存命中时才显示该项，因为此处的 0 与「没有缓存」是不同的事实。选择健康 teammate 时，系统刷新既有直接 child catalog，并打开普通的 `{ parentSessionId, childSessionId, mode: 'continuable' }` address。History 与后续人类 prompt 继续使用稳定 addressed-subagent 会话路径；本包不会添加 Team 专用 address 字段。
 
 ### 管理任务板
 

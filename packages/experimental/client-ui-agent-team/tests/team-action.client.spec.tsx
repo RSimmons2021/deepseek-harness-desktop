@@ -1502,4 +1502,24 @@ describe('TeamAction', () => {
     expect(screen.getByText(zh.tailEmpty)).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  it('marks only a working member\'s glyph, so motion on the roster means work', async () => {
+    const busy: TeamView = {
+      ...view,
+      members: [
+        { ...view.members[0]!, status: 'running' },
+        { ...view.members[1]!, status: 'provisioning' },
+        { id: 'idle-id' as SessionId, name: 'reader', role: 'teammate', status: 'idle', diagnostics: [] },
+        { id: 'gone-id' as SessionId, name: 'ghost', role: 'teammate', status: 'failed', diagnostics: [] },
+      ],
+    }
+    render(<TeamAction {...props(actions({ load: () => Promise.resolve({ ok: true, value: busy }) }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    const marked = [...document.querySelectorAll('[data-team-member-card]')]
+      .map(card => card.querySelector('[data-team-member-working]') !== null)
+    // Running and provisioning members are working; idle and failed are not.
+    expect(marked).toEqual([true, true, false, false])
+  })
 })

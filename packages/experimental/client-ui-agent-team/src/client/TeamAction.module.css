@@ -514,6 +514,63 @@
   transform: translate(118%, -118%);
 }
 
+/*
+ * A member that is running or provisioning animates its glyph: the inner ring
+ * sweeps, the marker orbits it, and the whole shape breathes. Idle, failed, and
+ * inactive members keep the still shape, so motion on the roster means work is
+ * happening rather than decorating every card equally.
+ */
+.memberGlyph[data-team-member-working] {
+  /* The ripple carries the state at a glance; the breathe is what reads up
+     close. Both ride the element, so the per-variant rotation is untouched. */
+  animation:
+    glyph-breathe 4.2s ease-in-out infinite,
+    glyph-pulse 2.8s ease-out infinite;
+}
+
+.memberGlyph[data-team-member-working]::before {
+  border-color: color-mix(in srgb, var(--team-orange) 72%, transparent);
+  animation: glyph-sweep 7s linear infinite;
+}
+
+.memberGlyph[data-team-member-working]::after {
+  animation: glyph-orbit 5.5s linear infinite;
+}
+
+@keyframes glyph-breathe {
+  0%, 100% { opacity: 0.82; }
+  50% { opacity: 1; }
+}
+
+@keyframes glyph-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--team-orange) 30%, transparent); }
+  70% { box-shadow: 0 0 0 16px color-mix(in srgb, var(--team-orange) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--team-orange) 0%, transparent); }
+}
+
+@keyframes glyph-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/*
+ * The marker rides the glyph's edge. `translate` places it on the rim first,
+ * so the surrounding rotation carries it around rather than spinning it in
+ * place.
+ */
+@keyframes glyph-orbit {
+  from { transform: rotate(0deg) translate(118%, -118%); }
+  to { transform: rotate(360deg) translate(118%, -118%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .memberGlyph[data-team-member-working],
+  .memberGlyph[data-team-member-working]::before,
+  .memberGlyph[data-team-member-working]::after {
+    animation: none;
+  }
+}
+
 .memberGlyph1 {
   border-radius: 50%;
   transform: rotate(0);
@@ -569,11 +626,11 @@
 
 .memberDetails {
   display: flex;
-  min-height: 58px;
   flex-direction: column;
+  /* Height is animated on open and close, so the content clips while the box
+     travels rather than spilling over the card's name. */
+  overflow: hidden;
   gap: 5px;
-  margin-top: 22px;
-  padding-top: 15px;
   border-top: 1px solid var(--team-stroke);
 }
 
