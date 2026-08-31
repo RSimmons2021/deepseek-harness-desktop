@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-experimental-agent-team": "workspace:^",
+    "@deepseek-ai/dsh-experimental-agent-team-write-lease": "workspace:^",
     "@deepseek-ai/dsh-experimental-tool-agent-team": "workspace:^"
   },
   "peerDependencies": {

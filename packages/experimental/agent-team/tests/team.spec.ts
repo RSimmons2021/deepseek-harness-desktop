@@ -974,6 +974,53 @@ describe('Team Remote API', () => {
     expect(() => ctx.agentTeams.remoteInterrupt(lead, 'editor')).toThrow('unexpected interrupt failure')
   })
 
+  it('leases a claimed scope to the member whose in-progress task claims it', async () => {
+    const { ctx, lead } = await setup(['hang'])
+    const editor = await spawn(ctx, lead, 'editor')
+    const editorAgent = ctx.agents.get(editor.member.id)
+    if (editorAgent === undefined) throw new Error('the teammate is not attached')
+
+    const created = await ctx.agentTeams.createTask(lead, {
+      subject: 'Rewrite the API', description: 'api work', writeScopes: ['packages/api'],
+    })
+    // A claimed-but-unstarted task leases nothing: only work in progress does.
+    expect(ctx.agentTeams.writeRefusal(editorAgent, 'packages/api/src/index.ts')).toBeUndefined()
+
+    await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: created.revision, action: 'claim',
+    })
+    const refusal = ctx.agentTeams.writeRefusal(editorAgent, 'packages/api/src/index.ts')
+    expect(refusal).toBe(
+      `packages/api/src/index.ts is inside "packages/api", claimed by task ${created.id} in progress by lead`,
+    )
+    // The owner writes its own claim, and nobody is refused outside it.
+    expect(ctx.agentTeams.writeRefusal(lead, 'packages/api/src/index.ts')).toBeUndefined()
+    // A sibling whose name merely starts with the scope is outside it; the
+    // scope's own path is inside it.
+    expect(ctx.agentTeams.writeRefusal(editorAgent, 'packages/apiary/src/index.ts')).toBeUndefined()
+    expect(ctx.agentTeams.writeRefusal(editorAgent, 'packages/api')).toContain('claimed by task')
+
+    // Reassigning moves the lease with the task.
+    const claimed = ctx.agentTeams.getTask(lead, created.id)
+    await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: claimed.revision, action: 'reassign', owner: 'editor',
+    })
+    expect(ctx.agentTeams.writeRefusal(editorAgent, 'packages/api/src/index.ts')).toBeUndefined()
+    expect(ctx.agentTeams.writeRefusal(lead, 'packages/api/src/index.ts')).toContain('in progress by editor')
+
+    // Completing it releases the scope for everyone.
+    const owned = ctx.agentTeams.getTask(lead, created.id)
+    await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: owned.revision, action: 'complete',
+    })
+    expect(ctx.agentTeams.writeRefusal(lead, 'packages/api/src/index.ts')).toBeUndefined()
+
+    ctx.agentTeams.interrupt(lead, 'editor')
+    await waitNoAgent(ctx, editor.member.id)
+    // An agent outside any Team writes as it always did.
+    expect(ctx.agentTeams.writeRefusal(editorAgent, 'packages/api/src/index.ts')).toBeUndefined()
+  })
+
   it('reports what each member has spent, and nothing without the projections', async () => {
     const { ctx, lead } = await setup(['hang'])
     // No projection service in this composition: no effort, rather than zeros

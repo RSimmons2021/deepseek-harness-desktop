@@ -37,3 +37,8 @@
 
     - id: tool-agent-team
       name: '@deepseek-ai/dsh-experimental-tool-agent-team'
+
+    # Turns the task board's advisory write scopes into refusals on the fs tool
+    # path: a scope an in-progress task claims is its owner's while it runs.
+    - id: agent-team-write-lease
+      name: '@deepseek-ai/dsh-experimental-agent-team-write-lease'

@@ -188,6 +188,22 @@ interrupt(caller: Agent, targetName: string): { previousStatus: 'running' | 'idl
 tryMembership(agent: Agent): TeamMembership | undefined
 
 /**
+ * Decide whether one member may write a workspace-relative path.
+ *
+ * A scope claimed by an in-progress task is that task owner's to write: this
+ * refuses every other member, and refuses nothing else. An unclaimed path,
+ * an unowned task's scope, and a scope the caller itself claims all pass, so
+ * enforcement adds exclusion between members without requiring a claim
+ * before any write.
+ *
+ * A caller that is not a Team member writes as it always did.
+ * @param agent - exact live Agent performing the write.
+ * @param path - normalized workspace-relative path being written.
+ * @returns the model-facing refusal, or undefined when the write may proceed.
+ */
+writeRefusal(agent: Agent, path: string): string | undefined
+
+/**
  * Read the current roster and non-deleted task board through the generated Remote API.
  * @param agent - exact live Team member used as the authority credential.
  * @returns detached current roster and task views.

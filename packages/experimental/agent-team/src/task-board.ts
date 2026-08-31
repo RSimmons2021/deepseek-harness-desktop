@@ -22,6 +22,19 @@ function scopesOverlap(left: string, right: string): boolean {
   return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`)
 }
 
+/**
+ * Whether one normalized workspace-relative path lies inside a write scope.
+ *
+ * Directional, unlike {@link scopesOverlap}: a scope covers the paths beneath
+ * it, and a path never covers the scope it sits in.
+ * @param path - normalized workspace-relative path being written.
+ * @param scope - a task's claimed file or directory prefix.
+ * @returns whether the scope covers the path.
+ */
+export function scopeCovers(path: string, scope: string): boolean {
+  return path === scope || path.startsWith(`${scope}/`)
+}
+
 const TASK_GRAPH_ERROR_CODES: Record<TeamTaskGraphViolation, string> = {
   missing: 'TEAM_TASK_NOT_FOUND',
   duplicate: 'TEAM_INVALID_ARGUMENT',

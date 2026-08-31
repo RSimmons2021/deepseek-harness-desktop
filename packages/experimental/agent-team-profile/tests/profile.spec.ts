@@ -22,6 +22,7 @@ describe('Agent Teams profile bundle', () => {
     expect(manifest.dependencies).toMatchObject({
       '@deepseek-ai/dsh-experimental-agent-team': 'workspace:^',
       '@deepseek-ai/dsh-experimental-tool-agent-team': 'workspace:^',
+      '@deepseek-ai/dsh-experimental-agent-team-write-lease': 'workspace:^',
     })
 
     const parsed = yaml.load(
@@ -47,6 +48,10 @@ describe('Agent Teams profile bundle', () => {
     })
     expect(inserted.find(entry => entry.id === 'tool-agent-team')).toMatchObject({
       name: '@deepseek-ai/dsh-experimental-tool-agent-team',
+    })
+    // Enforcement ships with the layer that creates the claims it enforces.
+    expect(inserted.find(entry => entry.id === 'agent-team-write-lease')).toMatchObject({
+      name: '@deepseek-ai/dsh-experimental-agent-team-write-lease',
     })
   })
 })

@@ -194,7 +194,7 @@ These limits describe what a team cannot do yet or what needs special operationa
 
 - **Experimental prototype with no stability promise** — the package is private, excluded from official releases, and its contracts change freely while it incubates.
 - **One process and one shared checkout** — members share cwd and observe edits immediately; this package provides no worktree, remote member, merge, or filesystem lock.
-- **Advisory write scopes** — Bash, formatters, code generators, and direct external writers can bypass filesystem version checks; Leads must coordinate ownership and review the final diff.
+- **Advisory write scopes on every path but the filesystem tools** — [`dsh-experimental-agent-team-write-lease`](../agent-team-write-lease/README.md) refuses a member's `fs` tool write inside a scope another member's in-progress task claims, and `writeRefusal` is the decision it asks. Bash, formatters, code generators, and direct external writers still bypass it, as they bypass the filesystem version checks; Leads must coordinate ownership and review the final diff.
 - **Flat immutable roster** — only the Lead creates direct teammates; there is no nested Team, rename, deletion, or name reuse.
 - **No automatic ownership release** — idle, interruption, process exit, and failed work do not release a task owner.
 - **Mailbox is not cross-process exactly-once** — concurrent harness processes over one Team are unsupported.

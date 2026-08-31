@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-`dsh-experimental-agent-team-profile` 是在 `@deepseek-ai/dsh-base` 之上启用 [Agent Teams](../agent-team/README.zh.md) 的私有 profile 层。它的 patch 会插入 Team domain 与 Team-scoped 工具、禁用名称重叠的全局 continuable-child control，并保留普通的一次性 fresh 与 fork delegation 工具。必须将本包显式添加到已初始化的源码 checkout profile；正式发布会排除本包。
+`dsh-experimental-agent-team-profile` 是在 `@deepseek-ai/dsh-base` 之上启用 [Agent Teams](../agent-team/README.zh.md) 的私有 profile 层。它的 patch 会插入 Team domain、Team-scoped 工具与把任务板已声明的 scope 变成实际拒绝的 write lease、禁用名称重叠的全局 continuable-child control，并保留普通的一次性 fresh 与 fork delegation 工具。必须将本包显式添加到已初始化的源码 checkout profile；正式发布会排除本包。
 
 ## 目录
 
@@ -48,7 +48,7 @@ profile 必须已经包含 `@deepseek-ai/dsh-base`，本层会使用其中的 Su
 <details>
 <summary>实现细节——点击展开</summary>
 
-本包的运行时内容是 [`cordis.patch.yml`](cordis.patch.yml)。在 `dsh-base` 之后应用时，patch 会禁用 `tool-subagent-control`、`tool-subagent-list-agents` 与 `tool-subagent-report`，把 fresh 与 fork Subagent 行设置为 `one-shot`，并以显式 provider 和限制插入 Team service 与工具行。
+本包的运行时内容是 [`cordis.patch.yml`](cordis.patch.yml)。在 `dsh-base` 之后应用时，patch 会禁用 `tool-subagent-control`、`tool-subagent-list-agents` 与 `tool-subagent-report`，把 fresh 与 fork Subagent 行设置为 `one-shot`，并以显式 provider 和限制插入 Team service、工具行与 write lease 行。
 
 | 文件 | 职责 |
 |---|---|

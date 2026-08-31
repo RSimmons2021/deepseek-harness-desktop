@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-experimental-agent-team-profile` is a private profile layer that enables [Agent Teams](../agent-team/README.md) over `@deepseek-ai/dsh-base`. Its patch inserts the Team domain and Team-scoped tools, disables the overlapping global continuable-child controls, and keeps the ordinary fresh and fork delegation tools as one-shot operations. Add it explicitly to an initialized source-checkout profile; official releases exclude this package.
+`dsh-experimental-agent-team-profile` is a private profile layer that enables [Agent Teams](../agent-team/README.md) over `@deepseek-ai/dsh-base`. Its patch inserts the Team domain, the Team-scoped tools, and the write lease that turns the task board's claimed scopes into refusals, disables the overlapping global continuable-child controls, and keeps the ordinary fresh and fork delegation tools as one-shot operations. Add it explicitly to an initialized source-checkout profile; official releases exclude this package.
 
 ## Table of Contents
 
@@ -48,7 +48,7 @@ The layer adds the Agent Teams domain and its scoped creation, roster, messaging
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The package's runtime content is [`cordis.patch.yml`](cordis.patch.yml). Applied after `dsh-base`, the patch disables `tool-subagent-control`, `tool-subagent-list-agents`, and `tool-subagent-report`; sets the fresh and fork Subagent rows to `one-shot`; and inserts the Team service and tool rows with explicit providers and limits.
+The package's runtime content is [`cordis.patch.yml`](cordis.patch.yml). Applied after `dsh-base`, the patch disables `tool-subagent-control`, `tool-subagent-list-agents`, and `tool-subagent-report`; sets the fresh and fork Subagent rows to `one-shot`; and inserts the Team service, tool, and write-lease rows with explicit providers and limits.
 
 | File | Role |
 |---|---|

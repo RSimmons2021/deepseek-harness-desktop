@@ -12,7 +12,7 @@ import { TeamRuntimeLifecycle } from './lifecycle.ts'
 import { TeamMailbox } from './mailbox.ts'
 import { TeamRoster } from './roster.ts'
 import type { TeamMembership } from './roster.ts'
-import { TeamTaskBoard } from './task-board.ts'
+import { scopeCovers, TeamTaskBoard } from './task-board.ts'
 import { TeamId, TeamTaskId } from './types.ts'
 import type {
   Config,
@@ -250,6 +250,35 @@ export class TeamService extends TypertRemoteService {
    */
   tryMembership(agent: Agent): TeamMembership | undefined {
     return this.roster.tryMembership(agent)
+  }
+
+  /**
+   * Decide whether one member may write a workspace-relative path.
+   *
+   * A scope claimed by an in-progress task is that task owner's to write: this
+   * refuses every other member, and refuses nothing else. An unclaimed path,
+   * an unowned task's scope, and a scope the caller itself claims all pass, so
+   * enforcement adds exclusion between members without requiring a claim
+   * before any write.
+   *
+   * A caller that is not a Team member writes as it always did.
+   * @param agent - exact live Agent performing the write.
+   * @param path - normalized workspace-relative path being written.
+   * @returns the model-facing refusal, or undefined when the write may proceed.
+   */
+  writeRefusal(agent: Agent, path: string): string | undefined {
+    const membership = this.roster.tryMembership(agent)
+    if (membership === undefined) return undefined
+    // Task views over snapshots: the owner is already resolved to the name the
+    // caller's own membership is spelled with, so the two compare directly.
+    for (const task of this.tasks.list(membership)) {
+      if (task.status !== 'in_progress' || task.ownerName === undefined) continue
+      if (task.ownerName === membership.name) continue
+      const scope = task.writeScopes.find(claimed => scopeCovers(path, claimed))
+      if (scope === undefined) continue
+      return `${path} is inside "${scope}", claimed by task ${task.id} in progress by ${task.ownerName}`
+    }
+    return undefined
   }
 
   /**

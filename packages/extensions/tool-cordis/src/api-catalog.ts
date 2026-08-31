@@ -416,6 +416,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Team membership, or undefined for non-Team subagents and stale identities.',
       },
       {
+        signature: 'writeRefusal(agent: Agent, path: string): string | undefined',
+        description: 'Decide whether one member may write a workspace-relative path.\n\nA scope claimed by an in-progress task is that task owner\'s to write: this refuses every other member, and refuses nothing else. An unclaimed path, an unowned task\'s scope, and a scope the caller itself claims all pass, so enforcement adds exclusion between members without requiring a claim before any write.\n\nA caller that is not a Team member writes as it always did.',
+        parameters: [{ name: 'agent', description: 'exact live Agent performing the write.' }, { name: 'path', description: 'normalized workspace-relative path being written.' }],
+        returns: 'the model-facing refusal, or undefined when the write may proceed.',
+      },
+      {
         signature: '@Remote(\'view\') remoteView(agent: Agent): TeamView',
         description: 'Read the current roster and non-deleted task board through the generated Remote API.',
         parameters: [{ name: 'agent', description: 'exact live Team member used as the authority credential.' }],

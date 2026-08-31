@@ -4757,6 +4757,9 @@ importers:
       '@deepseek-ai/dsh-experimental-agent-team':
         specifier: workspace:^
         version: link:../agent-team
+      '@deepseek-ai/dsh-experimental-agent-team-write-lease':
+        specifier: workspace:^
+        version: link:../agent-team-write-lease
       '@deepseek-ai/dsh-experimental-tool-agent-team':
         specifier: workspace:^
         version: link:../tool-agent-team
@@ -4792,6 +4795,24 @@ importers:
       js-yaml:
         specifier: ^4.2.0
         version: 4.3.1
+
+  packages/experimental/agent-team-write-lease:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:^
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-experimental-agent-team':
+        specifier: workspace:^
+        version: link:../agent-team
+      '@deepseek-ai/dsh-fs':
+        specifier: workspace:^
+        version: link:../../fs/fs
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
 
   packages/experimental/client-ui-agent-team:
     dependencies:
