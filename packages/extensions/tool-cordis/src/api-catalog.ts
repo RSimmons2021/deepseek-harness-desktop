@@ -470,10 +470,10 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the most recent entries, newest first.',
       },
       {
-        signature: '@Remote(\'waitForChange\') async remoteWaitForChange(agent: Agent, timeoutMs: number): Promise<TeamWaitResult>',
-        description: 'Wait for the next Team-domain or member-status change through the generated Remote API.\n\nA browser holds this call open and refetches remoteView whenever it resolves with a change. The wire carries no cancellation, so the bounded timeout is the only end of the wait: a browser that disconnects leaves one wait outstanding until it expires.',
-        parameters: [{ name: 'agent', description: 'exact live Team member waiting for activity.' }, { name: 'timeoutMs', description: 'bounded wait duration from ten seconds through one hour.' }],
-        returns: 'one observed change or a timeout result.',
+        signature: '@Remote({ mode: \'stream\' }) async *follow(agent: Agent, signal: AbortSignal): AsyncIterable<TeamFollowFrame>',
+        description: 'Follow this Team until the caller stops listening.\n\nYields the current view, then the view again after every observed change. The stream carrier owns the cancellation, so a browser that disconnects ends its wait immediately instead of leaving one outstanding until a timeout expires — which is what a poll over a wire carrying no cancellation could not do.\n\nEvery frame carries the whole view rather than an increment: this Team\'s view is small, and a client that replaces it on each frame cannot drift.',
+        parameters: [{ name: 'agent', description: 'exact live Team member following the Team.' }, { name: 'signal', description: 'cancellation owned by the Remote stream carrier.' }],
+        returns: 'the opening view followed by one frame per observed change.',
       },
     ],
   },
@@ -5646,6 +5646,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TeamActivityKind',
     declaration: 'export type TeamActivityKind = \'member\' | \'task\' | \'message-queued\' | \'message-delivered\';',
+  },
+  {
+    name: 'TeamFollowFrame',
+    declaration: 'export type TeamFollowFrame = {\n    readonly type: \'baseline\';\n    readonly view: TeamView;\n} | {\n    readonly type: \'update\';\n    readonly view: TeamView;\n};',
   },
   {
     name: 'TeamId',

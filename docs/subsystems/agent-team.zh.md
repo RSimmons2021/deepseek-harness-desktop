@@ -285,17 +285,21 @@ writeRefusal(agent: Agent, path: string): string | undefined
 @Remote('activity') remoteActivity(agent: Agent, limit: number): TeamActivityEntry[]
 
 /**
- * Wait for the next Team-domain or member-status change through the generated Remote API.
+ * Follow this Team until the caller stops listening.
  *
- * A browser holds this call open and refetches {@link remoteView} whenever it
- * resolves with a change. The wire carries no cancellation, so the bounded
- * timeout is the only end of the wait: a browser that disconnects leaves one
- * wait outstanding until it expires.
- * @param agent - exact live Team member waiting for activity.
- * @param timeoutMs - bounded wait duration from ten seconds through one hour.
- * @returns one observed change or a timeout result.
+ * Yields the current view, then the view again after every observed change.
+ * The stream carrier owns the cancellation, so a browser that disconnects
+ * ends its wait immediately instead of leaving one outstanding until a
+ * timeout expires — which is what a poll over a wire carrying no
+ * cancellation could not do.
+ *
+ * Every frame carries the whole view rather than an increment: this Team's
+ * view is small, and a client that replaces it on each frame cannot drift.
+ * @param agent - exact live Team member following the Team.
+ * @param signal - cancellation owned by the Remote stream carrier.
+ * @returns the opening view followed by one frame per observed change.
  */
-@Remote('waitForChange') async remoteWaitForChange(agent: Agent, timeoutMs: number): Promise<TeamWaitResult>
+@Remote({ mode: 'stream' }) async *follow(agent: Agent, signal: AbortSignal): AsyncIterable<TeamFollowFrame>
 ```
 
 Types: [Agent](core.zh.md)

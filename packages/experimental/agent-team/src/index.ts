@@ -31,6 +31,7 @@ import type {
   TeamMessageMutationResult,
   TeamSpawnMutationResult,
   TeamTaskMutationResult,
+  TeamFollowFrame,
   TeamTailLine,
   TeamTaskView,
   TeamView,
@@ -60,6 +61,14 @@ const MAX_ACTIVITY_ENTRIES = 200
 
 /** Tail lines one read may return. */
 const MAX_TAIL_LINES = 50
+
+/**
+ * How long one follow-stream wait parks before re-entering.
+ *
+ * The carrier's cancellation ends a disconnected follow, so this is not a
+ * disconnect deadline; it only bounds how long one waiter sits registered.
+ */
+const FOLLOW_WAIT_MS = 600_000
 
 /** UTF-16 units retained per tail line before it is cut. */
 const MAX_TAIL_LINE_LENGTH = 400
@@ -496,19 +505,41 @@ export class TeamService extends TypertRemoteService {
   }
 
   /**
-   * Wait for the next Team-domain or member-status change through the generated Remote API.
+   * Follow this Team until the caller stops listening.
    *
-   * A browser holds this call open and refetches {@link remoteView} whenever it
-   * resolves with a change. The wire carries no cancellation, so the bounded
-   * timeout is the only end of the wait: a browser that disconnects leaves one
-   * wait outstanding until it expires.
-   * @param agent - exact live Team member waiting for activity.
-   * @param timeoutMs - bounded wait duration from ten seconds through one hour.
-   * @returns one observed change or a timeout result.
+   * Yields the current view, then the view again after every observed change.
+   * The stream carrier owns the cancellation, so a browser that disconnects
+   * ends its wait immediately instead of leaving one outstanding until a
+   * timeout expires — which is what a poll over a wire carrying no
+   * cancellation could not do.
+   *
+   * Every frame carries the whole view rather than an increment: this Team's
+   * view is small, and a client that replaces it on each frame cannot drift.
+   * @param agent - exact live Team member following the Team.
+   * @param signal - cancellation owned by the Remote stream carrier.
+   * @returns the opening view followed by one frame per observed change.
    */
-  @Remote('waitForChange')
-  async remoteWaitForChange(agent: Agent, timeoutMs: number): Promise<TeamWaitResult> {
-    return await this.waitForChange(agent, timeoutMs, new AbortController().signal)
+  @Remote({ mode: 'stream' })
+  async *follow(agent: Agent, signal: AbortSignal): AsyncIterable<TeamFollowFrame> {
+    const membership = this.roster.membership(agent)
+    // Read through a call: TypeScript keeps a property read narrowed across the
+    // await below, and both re-checks exist because the carrier can cancel
+    // while one wait is outstanding.
+    const cancelled = (): boolean => signal.aborted
+    yield { type: 'baseline', view: this.remoteView(agent) }
+    while (!cancelled()) {
+      let observed: TeamWaitResult
+      try {
+        observed = await this.activity.wait(membership.id, FOLLOW_WAIT_MS, signal)
+      } catch (error) {
+        // The carrier cancelling is how a follow ends; every other failure is
+        // the stream's to report.
+        if (cancelled()) return
+        throw error
+      }
+      if (cancelled()) return
+      if (!observed.timedOut) yield { type: 'update', view: this.remoteView(agent) }
+    }
   }
 
   /** Preserve Team task rejections while allowing unexpected failures to reject the Remote call. */

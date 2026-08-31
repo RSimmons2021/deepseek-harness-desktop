@@ -19,7 +19,6 @@ import type {
   TeamTaskMutationResult,
   TeamTaskView as TeamTask,
   TeamView,
-  TeamWaitResult,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
 import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
@@ -87,11 +86,21 @@ export interface TeamActionInjected {
   ) => Promise<TeamMessageActionResult>
   interrupt: (sessionId: SessionId, targetName: string) => Promise<TeamInterruptActionResult>
   /**
-   * Hold one bounded wait for the next Team change. The surface calls this in a
-   * loop and reloads on every observed change, so the roster and task board
-   * follow the running Team without the user asking for a refresh.
+   * Follow the Team until the returned disposer runs.
+   *
+   * The transport owns reconnection and cancellation, so the roster and task
+   * board follow the running Team without the user asking for a refresh, and a
+   * closed surface ends its Host-side wait rather than leaving one outstanding.
+   * @param sessionId - the conversation the Team is read through.
+   * @param accept - receives the opening view and every later one.
+   * @param failed - receives a terminal stream failure.
+   * @returns the disposer that stops following.
    */
-  waitForChange: (sessionId: SessionId, timeoutMs: number) => Promise<TeamActionResult<TeamWaitResult>>
+  follow: (
+    sessionId: SessionId,
+    accept: (view: TeamView) => void,
+    failed: (error: unknown) => void,
+  ) => () => void
   /**
    * Read the Team's recorded history, newest first. The board shows where the
    * Team is now; this shows how it got there, and is the only place a completed
@@ -118,7 +127,7 @@ export type TeamActionProps =
 export type TeamSurfaceProps = Pick<
   TeamActionProps,
   | 'sessionId' | 'load' | 'createTask' | 'updateTask' | 'spawnTeammate'
-  | 'sendMessage' | 'interrupt' | 'waitForChange' | 'activity' | 'tail' | 'openTeammate'
+  | 'sendMessage' | 'interrupt' | 'follow' | 'activity' | 'tail' | 'openTeammate'
   | 'useColorScheme' | 'toggleTheme' | 't'
 > & {
   /** Keep the designed Team workspace mounted as the application surface. */
@@ -271,7 +280,7 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
-  sessionId, load, createTask, updateTask, spawnTeammate, sendMessage, interrupt, waitForChange,
+  sessionId, load, createTask, updateTask, spawnTeammate, sendMessage, interrupt, follow,
   activity, tail, openTeammate, useColorScheme, toggleTheme, t, standalone = false,
 }: TeamSurfaceProps) {
   const colorScheme = useColorScheme(scheme => scheme)
@@ -346,7 +355,6 @@ export function TeamAction({
    * seconds and one hour and the wire carries no cancellation, so a short hold
    * keeps an abandoned wait from outliving the surface for long.
    */
-  const LIVE_WAIT_MS = 30_000
 
   const refresh = useCallback(async (): Promise<boolean> => {
     const requestedSession = sessionId
@@ -358,16 +366,12 @@ export function TeamAction({
     if (result.ok) {
       setView(result.value)
       setError(null)
-      // The history follows the same change signal as the board, so one reload
-      // keeps where the Team is and how it got there in step.
-      const recorded = await activity(requestedSession, ACTIVITY_LIMIT)
-      if (sessionRef.current === requestedSession && recorded.ok) setHistory(recorded.value)
       return true
     } else {
       setError(failureText(result.error))
       return false
     }
-  }, [activity, load, sessionId])
+  }, [load, sessionId])
 
   useEffect(() => {
     if (!standalone) return
@@ -391,29 +395,39 @@ export function TeamAction({
     return () => { reading.abort() }
   }, [activeMemberId, sessionId, tail, view])
 
-  // Follow the running Team: hold one bounded wait, reload on every observed
-  // change, and re-enter the wait. A transport failure ends the loop and leaves
-  // the manual refresh as the way back, rather than spinning against a Remote
-  // that is not answering.
+  // Follow the running Team while the surface is open. The transport reopens
+  // across carrier generations and cancels on disposal, so the roster and task
+  // board arrive without the user asking and without this surface owning a
+  // retry loop. A terminal failure leaves the manual refresh as the way back.
   useEffect(() => {
     if (!open) return
     const requestedSession = sessionId
-    const following = new AbortController()
-    // Read through a call: TypeScript keeps a property read narrowed across the
-    // await below, and the re-check exists because the surface can close while
-    // one wait is outstanding.
-    const stopped = (): boolean => following.signal.aborted
-    const follow = async (): Promise<void> => {
-      while (!stopped()) {
-        const waited = await waitForChange(requestedSession, LIVE_WAIT_MS)
-        if (stopped() || sessionRef.current !== requestedSession) return
-        if (!waited.ok) return
-        if (!waited.value.timedOut) await refresh()
-      }
-    }
-    void follow()
-    return () => { following.abort() }
-  }, [open, refresh, sessionId, waitForChange])
+    return follow(
+      requestedSession,
+      (followed) => {
+        if (sessionRef.current !== requestedSession) return
+        setView(followed)
+        setError(null)
+      },
+      (reason: unknown) => {
+        if (sessionRef.current === requestedSession) setError(String(reason))
+      },
+    )
+  }, [follow, open, sessionId])
+
+  // The history follows the view rather than the transport: whatever produced
+  // a new board — a followed change or the manual refresh — is also what makes
+  // the record of how it got there worth re-reading.
+  useEffect(() => {
+    if (view === null) return
+    const requestedSession = sessionId
+    const reading = new AbortController()
+    const stopped = (): boolean => reading.signal.aborted
+    void activity(requestedSession, ACTIVITY_LIMIT).then((recorded) => {
+      if (!stopped() && recorded.ok) setHistory(recorded.value)
+    })
+    return () => { reading.abort() }
+  }, [activity, sessionId, view])
 
   const submitSpawn = useCallback(async (): Promise<void> => {
     const requestedSession = sessionId

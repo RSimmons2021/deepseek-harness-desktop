@@ -358,6 +358,19 @@ export interface TeamTailLine {
   readonly truncated?: true
 }
 
+/**
+ * One frame of the Team follow stream.
+ *
+ * Both frames carry the whole view: the Team is small enough that recomputing
+ * it costs less than an increment vocabulary the surface would have to fold,
+ * and a reconnecting client that replaces its view on every frame cannot drift
+ * from the Host. The discriminant separates the opening frame, which a client
+ * must receive before it has anything to show, from the ones a change produced.
+ */
+export type TeamFollowFrame =
+  | { readonly type: 'baseline'; readonly view: TeamView }
+  | { readonly type: 'update'; readonly view: TeamView }
+
 /** Result of waiting for Team activity. */
 export interface TeamWaitResult {
   readonly timedOut: boolean

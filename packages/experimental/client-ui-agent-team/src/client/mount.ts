@@ -1,11 +1,14 @@
 /** Source-safe Agent Teams browser registration and Remote mount lifecycle. */
 
 import type {
+  TeamFollowFrame,
   TeamMemberView as TeamRosterMember,
   TeamView,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
 import type {} from '@deepseek-ai/dsh-experimental-agent-team/remote'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import { RemoteSnapshotStream } from '@deepseek-ai/dsh-api-gateway/client'
+import type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
@@ -31,6 +34,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Required browser services for RPC, navigation, slots, and localized copy. */
 export const inject = ['sessions', 'remote', 'slots', 'locale', 'uiSession', 'theme']
+
+/** Diagnostic owner name shared by the stream and the snapshot consumer above it. */
+const STREAM_NAME = 'Agent Team view stream'
+
+type TeamStreamRemote = Pick<ClientRemote, '$stream'>
+type TeamBaselineFrame = Extract<TeamFollowFrame, { type: 'baseline' }>
+type TeamUpdateFrame = Extract<TeamFollowFrame, { type: 'update' }>
 
 function isDesktopSurface(): boolean {
   if (typeof window === 'undefined') return false
@@ -87,8 +97,30 @@ function registerUi(ctx: ClientContext): void {
     async interrupt(sessionId, targetName) {
       return await ctx.remote.agentTeams.interrupt(leadSessionId(sessionId), targetName)
     },
-    async waitForChange(sessionId, timeoutMs) {
-      return await ctx.remote.agentTeams.waitForChange(leadSessionId(sessionId), timeoutMs)
+    follow(sessionId, accept, failed) {
+      // The Gateway owns reconnection and cancellation: the surface starts one
+      // logical stream and disposes it, and a browser that goes away ends its
+      // Host-side wait immediately rather than leaving one outstanding.
+      const stream = new RemoteSnapshotStream<TeamBaselineFrame, TeamUpdateFrame>(
+        (ctx.remote as TeamStreamRemote).$stream<TeamFollowFrame>({
+          name: STREAM_NAME,
+          open: signal => ctx.remote.agentTeams.follow(leadSessionId(sessionId), signal),
+          ended: accepted => new Error(accepted
+            ? `${STREAM_NAME} ended without a terminal result`
+            : `${STREAM_NAME} ended before its opening view`),
+        }),
+        {
+          name: STREAM_NAME,
+          isSnapshot: (frame): frame is TeamBaselineFrame => frame.type === 'baseline',
+          // Every frame carries the whole view, so the opening frame and each
+          // later one are accepted the same way.
+          replace: (frame) => { accept(frame.view) },
+          update: (frame) => { accept(frame.view) },
+          failed,
+        },
+      )
+      stream.start()
+      return () => { void stream.dispose() }
     },
     async openTeammate(sessionId: SessionId, member: TeamRosterMember): Promise<void> {
       if (member.role !== 'teammate') return

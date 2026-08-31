@@ -8,6 +8,7 @@ export type {
   SpawnTeammateResult,
   TeamActivityEntry,
   TeamActivityKind,
+  TeamFollowFrame,
   TeamInterruptMutationResult,
   TeamInterruptView,
   TeamMemberEffort,

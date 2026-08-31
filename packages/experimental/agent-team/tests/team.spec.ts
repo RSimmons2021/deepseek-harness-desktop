@@ -15,7 +15,9 @@ import * as SubagentSpawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import TeamService, { foldTeam, TeamError, TeamId, TeamMessageId, TeamTaskId } from '../src/index.ts'
 import { TeamRuntimeLifecycle } from '../src/lifecycle.ts'
-import type { TeamMemberSnapshot, TeamMessageSnapshot, TeamTaskSnapshot } from '../src/index.ts'
+import type {
+  TeamMemberSnapshot, TeamMessageSnapshot, TeamTaskSnapshot, TeamWaitResult,
+} from '../src/index.ts'
 import { TestSessionQuery } from './test-session-query.ts'
 
 const SIGNAL = new AbortController().signal
@@ -1185,12 +1187,59 @@ describe('Team Remote API', () => {
     }
   })
 
-  it('waits for the next Team change without a caller-supplied signal', async () => {
+  it('follows the Team from an opening view until the carrier cancels', async () => {
     const { ctx, lead } = await setup([])
-    const wait = vi.spyOn(ctx.agentTeams, 'waitForChange').mockResolvedValueOnce({ timedOut: true })
+    const carrier = new AbortController()
+    const frames = ctx.agentTeams.follow(lead, carrier.signal)[Symbol.asyncIterator]()
 
-    await expect(ctx.agentTeams.remoteWaitForChange(lead, 10_000)).resolves.toEqual({ timedOut: true })
-    expect(wait).toHaveBeenCalledWith(lead, 10_000, expect.any(AbortSignal))
+    // The opening frame is the view itself: a client has something to show
+    // before anything has changed.
+    await expect(frames.next()).resolves.toMatchObject({
+      value: { type: 'baseline', view: { members: [{ name: 'lead' }], tasks: [] } },
+    })
+
+    const pending = frames.next()
+    const created = await ctx.agentTeams.createTask(lead, { subject: 'Follow me', description: 'work' })
+    await expect(pending).resolves.toMatchObject({
+      value: { type: 'update', view: { tasks: [{ id: created.id, subject: 'Follow me' }] } },
+    })
+
+    // The carrier's cancellation ends the follow rather than a timeout.
+    const outstanding = frames.next()
+    carrier.abort()
+    await expect(outstanding).resolves.toMatchObject({ done: true })
+  })
+
+  it('re-enters a timed-out wait and stops on one that settles after cancellation', async () => {
+    const { ctx, lead } = await setup([])
+    const internals = ctx.agentTeams as unknown as {
+      activity: { wait: (id: unknown, ms: number, signal: AbortSignal) => Promise<TeamWaitResult> }
+    }
+    const carrier = new AbortController()
+    const frames = ctx.agentTeams.follow(lead, carrier.signal)[Symbol.asyncIterator]()
+    await frames.next()
+
+    const wait = vi.spyOn(internals.activity, 'wait')
+      // A wait that parked without a change produces no frame and re-enters.
+      .mockResolvedValueOnce({ timedOut: true })
+      // A change that settles after the carrier is gone reaches nobody.
+      .mockImplementationOnce(() => {
+        carrier.abort()
+        return Promise.resolve({ timedOut: false })
+      })
+
+    await expect(frames.next()).resolves.toMatchObject({ done: true })
+    expect(wait).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports a wait failure that is not the carrier cancelling', async () => {
+    const { ctx, lead } = await setup([])
+    const internals = ctx.agentTeams as unknown as { activity: { wait: () => Promise<never> } }
+    const frames = ctx.agentTeams.follow(lead, new AbortController().signal)[Symbol.asyncIterator]()
+    await frames.next()
+
+    vi.spyOn(internals.activity, 'wait').mockRejectedValueOnce(new Error('the waiter broke'))
+    await expect(frames.next()).rejects.toThrow('the waiter broke')
   })
 })
 

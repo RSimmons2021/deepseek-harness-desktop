@@ -1,4 +1,6 @@
 import { Context, Service } from '@deepseek-ai/cordis'
+import { RemoteStream } from '@deepseek-ai/dsh-api-gateway/client'
+import type { RemoteStreamOptions } from '@deepseek-ai/dsh-api-gateway/client'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
@@ -20,6 +22,7 @@ const REMOTE: TypertRemoteContribution = {
 
 async function bench(options: {
   addressed?: boolean
+  followFrames?: () => AsyncIterable<unknown>
   colorScheme?: 'light' | 'dark'
   preference?: string
   conflict?: boolean
@@ -51,6 +54,14 @@ async function bench(options: {
     }
   }
   const remote = new RemoteService(ctx)
+  // The Gateway's own reconnecting stream over a connection that is always
+  // available: the plugin's follow binding is exercised as it actually runs.
+  const connection = {
+    generation: { getSnapshot: () => ({ id: 1, host: { home: '/h' } }), subscribe: () => () => {} },
+  }
+  ctx.remote.$stream = <Item>(streamOptions: RemoteStreamOptions<Item>) => (
+    new RemoteStream(connection, streamOptions)
+  )
   const failure = {
     ok: false as const,
     error: { code: 'internal', message: 'offline', details: {} },
@@ -61,6 +72,10 @@ async function bench(options: {
     }], tasks: [task],
   }
   ctx.provide('remote.agentTeams', {
+    follow: (...args: unknown[]) => {
+      calls.push({ method: 'agentTeams/follow', args })
+      return options.followFrames?.() ?? (async function* empty() { await Promise.resolve() })()
+    },
     view: (...args: unknown[]) => {
       calls.push({ method: 'agentTeams/view', args })
       return Promise.resolve(options.remoteFailure === 'view'
@@ -73,7 +88,6 @@ async function bench(options: {
     activity: answer('agentTeams/activity', []),
     tail: answer('agentTeams/tail', []),
     interrupt: answer('agentTeams/interrupt', { ok: true, value: { previousStatus: 'running' } }),
-    waitForChange: answer('agentTeams/waitForChange', { timedOut: true }),
     updateTask: (...args: unknown[]) => {
       calls.push({ method: 'agentTeams/updateTask', args })
       if (options.remoteFailure === 'update') return Promise.resolve(failure)
@@ -322,11 +336,10 @@ describe('ui-team browser plugin', () => {
     await actions.activity(CHILD, 40)
     await actions.tail(CHILD, 'writer', 6)
     await actions.interrupt(CHILD, 'writer')
-    await actions.waitForChange(CHILD, 10_000)
 
     expect(b.calls.map(call => call.method)).toEqual([
       'agentTeams/spawnTeammate', 'agentTeams/sendMessage', 'agentTeams/activity',
-      'agentTeams/tail', 'agentTeams/interrupt', 'agentTeams/waitForChange',
+      'agentTeams/tail', 'agentTeams/interrupt',
     ])
     // Every one addresses the Lead, never the teammate conversation it was called from.
     expect(b.calls.every(call => call.args[0] === SESSION)).toBe(true)
@@ -351,5 +364,59 @@ describe('ui-team browser plugin', () => {
     stop()
     b.ctx.emit('theme/change', undefined as never)
     expect(changes).toHaveLength(1)
+  })
+
+  it('follows the Team through the Gateway stream and disposes it on demand', async () => {
+    const empty = { members: [], tasks: [], capacity: 8 }
+    const frames = [
+      { type: 'baseline', view: empty },
+      { type: 'update', view: { ...empty, tasks: [{ id: 'task-1' }] } },
+    ]
+    const b = await bench({
+      addressed: true,
+      followFrames: () => (async function* emit() {
+        for (const frame of frames) yield await Promise.resolve(frame)
+        // Park: a real follow ends when its carrier is cancelled, not by
+        // running out of frames.
+        await new Promise(() => {})
+      })(),
+    })
+    const actions = (b.entry()!.inject as unknown as () => TeamActionInjected)()
+
+    const seen: unknown[] = []
+    const failures: unknown[] = []
+    const stop = actions.follow(CHILD, (view) => { seen.push(view) }, (error) => { failures.push(error) })
+    await vi.waitFor(() => { expect(seen).toHaveLength(2) })
+
+    // The opening frame and every later one are taken the same way, and the
+    // follow addresses the Lead rather than the teammate conversation.
+    expect(seen[0]).toMatchObject({ tasks: [] })
+    expect(seen[1]).toMatchObject({ tasks: [{ id: 'task-1' }] })
+    expect(failures).toEqual([])
+    expect(b.calls.find(call => call.method === 'agentTeams/follow')?.args[0]).toBe(SESSION)
+
+    stop()
+  })
+
+  it('classifies a follow that ends after its opening view and one that ends before', async () => {
+    const opened = await bench({
+      followFrames: () => (async function* once() {
+        yield await Promise.resolve({ type: 'baseline', view: { members: [], tasks: [], capacity: 8 } })
+      })(),
+    })
+    const openedFailures: unknown[] = []
+    const openedActions = (opened.entry()!.inject as unknown as () => TeamActionInjected)()
+    openedActions.follow(SESSION, () => {}, (error) => { openedFailures.push(error) })
+    await vi.waitFor(() => { expect(openedFailures).toHaveLength(1) })
+    expect(String(openedFailures[0])).toContain('ended without a terminal result')
+
+    const silent = await bench({
+      followFrames: () => (async function* nothing() { await Promise.resolve() })(),
+    })
+    const silentFailures: unknown[] = []
+    const silentActions = (silent.entry()!.inject as unknown as () => TeamActionInjected)()
+    silentActions.follow(SESSION, () => {}, (error) => { silentFailures.push(error) })
+    await vi.waitFor(() => { expect(silentFailures).toHaveLength(1) })
+    expect(String(silentFailures[0])).toContain('ended before its opening view')
   })
 })

@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
-  TeamActivityEntry, TeamTailLine, TeamTaskId, TeamTaskView as TeamTask, TeamView, TeamWaitResult,
+  TeamActivityEntry, TeamTailLine, TeamTaskId, TeamTaskView as TeamTask, TeamView,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
@@ -111,9 +111,9 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
       ok: true,
       value: { ok: true, value: { previousStatus: 'running' } },
     }),
-    // Default fixture never reports a change, so the follow loop parks on its
-    // first wait instead of reloading underneath the assertions.
-    waitForChange: () => new Promise(() => {}),
+    // Default fixture never emits, so the followed view never lands underneath
+    // the assertions; the board still loads through the surface's own refresh.
+    follow: () => () => {},
     activity: () => Promise.resolve({ ok: true, value: [] }),
     tail: () => Promise.resolve({ ok: true, value: [] }),
     openTeammate: () => Promise.resolve(),
@@ -338,22 +338,65 @@ describe('TeamAction', () => {
     expect(screen.queryByRole('button', { name: zh.interrupt })).toBeNull()
   })
 
-  it('reloads when the live wait observes a change and stops after a transport failure', async () => {
+  it('takes each followed view, and shows a terminal stream failure', async () => {
     const load = vi.fn(() => Promise.resolve({ ok: true as const, value: view }))
-    const waitForChange = vi.fn()
-      .mockResolvedValueOnce({ ok: true, value: { timedOut: false } })
-      .mockResolvedValueOnce({ ok: true, value: { timedOut: true } })
-      .mockResolvedValueOnce(remoteFailure('gateway closed'))
-    render(<TeamAction {...props(actions({ load, waitForChange }))} />)
+    let accept: ((followed: TeamView) => void) | undefined
+    let failed: ((error: unknown) => void) | undefined
+    const stop = vi.fn()
+    const follow = vi.fn((
+      _session: SessionId,
+      onView: (followed: TeamView) => void,
+      onFailed: (error: unknown) => void,
+    ) => {
+      accept = onView
+      failed = onFailed
+      return stop
+    })
+    const rendered = render(<TeamAction {...props(actions({ load, follow }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
 
-    // One observed change reloads; the timeout re-enters the wait; the failure
-    // ends the loop, so the wait count settles instead of spinning.
-    await waitFor(() => { expect(load).toHaveBeenCalledTimes(2) })
-    await waitFor(() => { expect(waitForChange).toHaveBeenCalledTimes(3) })
-    await new Promise(resolve => setTimeout(resolve, 20))
-    expect(waitForChange).toHaveBeenCalledTimes(3)
+    // A followed view replaces the board without another read.
+    act(() => {
+      accept?.({ ...view, tasks: [{ ...task, subject: 'Followed task' }] })
+    })
+    expect(await screen.findByText('Followed task')).toBeTruthy()
+    expect(load).toHaveBeenCalledOnce()
+
+    // A terminal failure is reported and leaves the manual refresh as the way back.
+    act(() => { failed?.(new Error('gateway closed')) })
+    expect((await screen.findByRole('alert')).textContent).toContain('gateway closed')
+
+    // One that arrives after the conversation has moved on reaches nobody.
+    const stale = failed
+    rendered.rerender(<TeamAction {...props(actions({ load, follow }), 'next-session' as SessionId)} />)
+    act(() => { stale?.(new Error('too late to matter')) })
+    expect(screen.queryByText(/too late to matter/u)).toBeNull()
+
+    // Switching sessions stopped the first follow; unmounting stops the second,
+    // so neither is left running against a surface nobody is watching.
+    rendered.unmount()
+    expect(stop).toHaveBeenCalledTimes(2)
   })
+
+  it('ignores a followed view that arrives for a session the surface has left', async () => {
+    const load = vi.fn(() => Promise.resolve({ ok: true as const, value: view }))
+    let accept: ((followed: TeamView) => void) | undefined
+    const follow = vi.fn((_session: SessionId, onView: (followed: TeamView) => void) => {
+      accept = onView
+      return () => {}
+    })
+    const injected = actions({ load, follow })
+    const rendered = render(<TeamAction {...props(injected)} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    const stale = accept
+    rendered.rerender(<TeamAction {...props(injected, 'next-session' as SessionId)} />)
+    act(() => { stale?.({ ...view, tasks: [{ ...task, subject: 'Stale board' }] }) })
+    expect(screen.queryByText('Stale board')).toBeNull()
+  })
+
 
   it('expands a member card for mouse hover and keyboard focus without treating touch as hover', async () => {
     render(<TeamAction {...props(actions())} />)
@@ -1337,21 +1380,18 @@ describe('TeamAction', () => {
     expect(spawn.mock.calls[0]?.[1]).toMatchObject({ context: 'fresh' })
   })
 
-  it('ends the live-update loop when the surface closes under an outstanding wait', async () => {
-    const wait = Promise.withResolvers<TeamActionResult<TeamWaitResult>>()
+  it('stops following when the surface closes', async () => {
+    const stop = vi.fn()
     const load = vi.fn(() => Promise.resolve({ ok: true as const, value: view }))
-    render(<TeamAction {...props(actions({ load, waitForChange: () => wait.promise }))} />)
+    render(<TeamAction {...props(actions({ load, follow: () => stop }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
-    expect(load).toHaveBeenCalledOnce()
+    expect(stop).not.toHaveBeenCalled()
 
     fireEvent.keyDown(document, { key: 'Escape' })
     await waitFor(() => { expect(screen.queryByText('Implement runtime')).toBeNull() })
-    // The wait that was already outstanding reports a change nobody is watching.
-    wait.resolve({ ok: true, value: { timedOut: false } })
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(load).toHaveBeenCalledOnce()
+    // Closing ends the follow rather than leaving one outstanding on the Host.
+    expect(stop).toHaveBeenCalledOnce()
   })
 
   it('names what a member has spent, and omits cache it was never served', async () => {
