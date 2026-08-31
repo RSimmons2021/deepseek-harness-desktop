@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import {
   AnimatePresence, motion, useReducedMotion, type Transition,
 } from 'motion/react'
@@ -127,6 +127,16 @@ const EMPTY_SPAWN: SpawnDraft = { name: '', description: '', prompt: '', context
 
 /** Tiles the roster keeps on screen so a nearly empty Team still reads as a row. */
 const ROSTER_MIN_TILES = 4
+
+/** Board lanes, in the order an operator reads them: now, next, waiting, over. */
+const LANE_ORDER = ['laneActive', 'laneReady', 'laneBlocked', 'laneDone'] as const
+
+/** Which lane one task belongs in, from its status and derived readiness. */
+function laneOf(task: TeamTask): (typeof LANE_ORDER)[number] {
+  if (task.status === 'completed') return 'laneDone'
+  if (task.status === 'in_progress') return 'laneActive'
+  return task.ready ? 'laneReady' : 'laneBlocked'
+}
 
 /** Peer-message form state. The target comes from the card the form opened on. */
 interface MessageDraft {
@@ -472,6 +482,31 @@ export function TeamAction({
     roomToAdd ? 1 : 0,
     Math.max(0, ROSTER_MIN_TILES - (view?.members.length ?? 0)),
   )
+  // The board is a dependency graph, not a list: group it into the lanes its
+  // own derived readiness already implies, so what is running, what can start,
+  // and what is waiting on something else are separable at a glance.
+  const laned = LANE_ORDER.flatMap((label) => {
+    const lane = (view?.tasks ?? []).filter(task => laneOf(task) === label)
+    return lane.map((task, index) => ({
+      task,
+      laneStart: index === 0 ? { label, count: lane.length } : undefined,
+    }))
+  })
+  // Subjects for the ids a task names as blockers; a raw id says nothing about
+  // what is actually in the way.
+  const subjectOf = new Map((view?.tasks ?? []).map(task => [String(task.id), task.subject]))
+  // Write scopes are advisory rather than locks, so the board is the only place
+  // an overlap is visible before two members edit the same paths.
+  const scopeOwners = new Map<string, Set<string>>()
+  for (const task of view?.tasks ?? []) {
+    if (task.status === 'completed') continue
+    for (const scope of task.writeScopes) {
+      const owners = scopeOwners.get(scope) ?? new Set<string>()
+      owners.add(task.ownerName ?? '')
+      scopeOwners.set(scope, owners)
+    }
+  }
+
   // There is something to delegate once the board carries a task or a member is
   // already running; before that the lead has not done work worth splitting.
   const canDelegate = (view?.tasks.length ?? 0) > 0
@@ -790,104 +825,132 @@ export function TeamAction({
                   )}
                   {view.tasks.length === 0 && !creating && <div className={css.notice}>{t('empty')}</div>}
                   <div className={css.tasks}>
-                    {view.tasks.map(task => editing === task.id
-                      ? (
-                        <TaskForm
-                          key={task.id}
-                          draft={editDraft}
-                          setDraft={setEditDraft}
-                          pending={pendingTasks.has(task.id)}
-                          onSave={() => { void submitEdit(task) }}
-                          onCancel={() => { setEditing(null) }}
-                          t={t}
-                        />
-                      )
-                      : (
-                        <article
-                          key={task.id}
-                          className={pendingTasks.has(task.id) ? `${css.task} ${css.taskPending}` : css.task}
-                          aria-busy={pendingTasks.has(task.id) || undefined}
-                        >
-                          <div className={css.taskTitle}>
-                            <strong>{task.subject}</strong>
-                            <span>
-                              {pendingTasks.has(task.id)
-                                ? <TextShimmer duration={1.8} spread={10}>{t('updatingTask')}</TextShimmer>
-                                : t(statusKey(task.status))}
-                            </span>
-                          </div>
-                          <p>{task.description}</p>
-                          <div className={css.meta}>
-                            <span>{task.id}</span>
-                            {task.status === 'pending' && <span>{task.ready ? t('ready') : t('blocked')}</span>}
-                            {task.blockedBy.length > 0 && <span>{t('blockedBy')}: {task.blockedBy.join(', ')}</span>}
-                            {task.writeScopes.length > 0 && <span>{t('writeScopes')}: {task.writeScopes.join(', ')}</span>}
-                            {task.writeScopeWarnings.map(warning => <span key={warning} className={css.warning}>{warning}</span>)}
-                          </div>
-                          <div className={css.taskActions}>
-                            <label>
-                              {t('owner')}
-                              <select
-                                value={task.ownerName ?? ''}
-                                disabled={pendingTasks.has(task.id) || task.status === 'completed' || confirmingDelete === task.id}
-                                onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                                  const owner = event.target.value
-                                  void settleTask(task.id, () => updateTask(sessionId, {
-                                    taskId: task.id,
-                                    expectedRevision: task.revision,
-                                    action: 'reassign',
-                                    ...owner === '' ? {} : { owner },
-                                  }))
-                                }}
-                              >
-                                <option value="">{t('unowned')}</option>
-                                {assignable.map(member => <option key={member.id} value={member.name}>{member.name}</option>)}
-                              </select>
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => { startEdit(task) }}
-                              disabled={pendingTasks.has(task.id) || confirmingDelete === task.id}
+                    {laned.map(({ task, laneStart }) => (
+                      <Fragment key={task.id}>
+                        {laneStart !== undefined && (
+                          <h4 className={css.laneHeading}>
+                            {t(laneStart.label)}<span>{laneStart.count}</span>
+                          </h4>
+                        )}
+                        {editing === task.id
+                          ? (
+                            <TaskForm
+                              key={task.id}
+                              draft={editDraft}
+                              setDraft={setEditDraft}
+                              pending={pendingTasks.has(task.id)}
+                              onSave={() => { void submitEdit(task) }}
+                              onCancel={() => { setEditing(null) }}
+                              t={t}
+                            />
+                          )
+                          : (
+                            <article
+                              key={task.id}
+                              className={pendingTasks.has(task.id) ? `${css.task} ${css.taskPending}` : css.task}
+                              aria-busy={pendingTasks.has(task.id) || undefined}
                             >
-                              <IconEditOutline16 size={13} /> {t('edit')}
-                            </button>
-                            {task.status === 'in_progress' && (
-                              <button type="button" disabled={pendingTasks.has(task.id) || confirmingDelete === task.id} onClick={() => {
-                                void settleTask(task.id, () => updateTask(sessionId, {
-                                  taskId: task.id, expectedRevision: task.revision, action: 'complete',
-                                }))
-                              }}><IconCheckOutline14 /> {t('complete')}</button>
-                            )}
-                            {task.status === 'completed' && (
-                              <button type="button" disabled={pendingTasks.has(task.id) || confirmingDelete === task.id} onClick={() => {
-                                void settleTask(task.id, () => updateTask(sessionId, {
-                                  taskId: task.id, expectedRevision: task.revision, action: 'reopen',
-                                }))
-                              }}>{t('reopen')}</button>
-                            )}
-                            {confirmingDelete === task.id
-                              ? (
-                                <span className={css.deleteConfirm} role="group" aria-label={`${t('deleteConfirm')}: ${task.subject}`}>
-                                  <span>{t('deleteConfirm')}: <strong>{task.subject}</strong></span>
-                                  <button type="button" className={css.dangerButton} disabled={pendingTasks.has(task.id)} onClick={() => {
-                                    void settleTask(task.id, () => updateTask(sessionId, {
-                                      taskId: task.id, expectedRevision: task.revision, action: 'delete',
-                                    })).then((deleted) => { if (deleted !== undefined) setConfirmingDelete(null) })
-                                  }}><IconTrashOutline16 size={13} /> {t('delete')}</button>
-                                  <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => { setConfirmingDelete(null) }}>
-                                    {t('cancel')}
-                                  </button>
+                              <div className={css.taskTitle}>
+                                <strong>{task.subject}</strong>
+                                <span>
+                                  {pendingTasks.has(task.id)
+                                    ? <TextShimmer duration={1.8} spread={10}>{t('updatingTask')}</TextShimmer>
+                                    : t(statusKey(task.status))}
                                 </span>
-                              )
-                              : (
-                                <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => { setConfirmingDelete(task.id) }}>
-                                  <IconTrashOutline16 size={13} /> {t('delete')}
+                              </div>
+                              <p>{task.description}</p>
+                              <div className={css.meta}>
+                                <span>{task.id}</span>
+                                {task.blockedBy.length > 0 && (
+                                  <span>
+                                    {t('blockedBy')}: {task.blockedBy.map(id => subjectOf.get(String(id)) ?? String(id)).join(', ')}
+                                  </span>
+                                )}
+                                {task.writeScopes.length > 0 && <span>{t('writeScopes')}: {task.writeScopes.join(', ')}</span>}
+                                {task.writeScopeWarnings.map(warning => <span key={warning} className={css.warning}>{warning}</span>)}
+                              </div>
+                              <div className={css.taskActions}>
+                                <label>
+                                  {t('owner')}
+                                  <select
+                                    value={task.ownerName ?? ''}
+                                    disabled={pendingTasks.has(task.id) || task.status === 'completed' || confirmingDelete === task.id}
+                                    onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                                      const owner = event.target.value
+                                      void settleTask(task.id, () => updateTask(sessionId, {
+                                        taskId: task.id,
+                                        expectedRevision: task.revision,
+                                        action: 'reassign',
+                                        ...owner === '' ? {} : { owner },
+                                      }))
+                                    }}
+                                  >
+                                    <option value="">{t('unowned')}</option>
+                                    {assignable.map(member => <option key={member.id} value={member.name}>{member.name}</option>)}
+                                  </select>
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => { startEdit(task) }}
+                                  disabled={pendingTasks.has(task.id) || confirmingDelete === task.id}
+                                >
+                                  <IconEditOutline16 size={13} /> {t('edit')}
                                 </button>
-                              )}
-                          </div>
-                        </article>
-                      ))}
+                                {task.status === 'in_progress' && (
+                                  <button type="button" disabled={pendingTasks.has(task.id) || confirmingDelete === task.id} onClick={() => {
+                                    void settleTask(task.id, () => updateTask(sessionId, {
+                                      taskId: task.id, expectedRevision: task.revision, action: 'complete',
+                                    }))
+                                  }}><IconCheckOutline14 /> {t('complete')}</button>
+                                )}
+                                {task.status === 'completed' && (
+                                  <button type="button" disabled={pendingTasks.has(task.id) || confirmingDelete === task.id} onClick={() => {
+                                    void settleTask(task.id, () => updateTask(sessionId, {
+                                      taskId: task.id, expectedRevision: task.revision, action: 'reopen',
+                                    }))
+                                  }}>{t('reopen')}</button>
+                                )}
+                                {confirmingDelete === task.id
+                                  ? (
+                                    <span className={css.deleteConfirm} role="group" aria-label={`${t('deleteConfirm')}: ${task.subject}`}>
+                                      <span>{t('deleteConfirm')}: <strong>{task.subject}</strong></span>
+                                      <button type="button" className={css.dangerButton} disabled={pendingTasks.has(task.id)} onClick={() => {
+                                        void settleTask(task.id, () => updateTask(sessionId, {
+                                          taskId: task.id, expectedRevision: task.revision, action: 'delete',
+                                        })).then((deleted) => { if (deleted !== undefined) setConfirmingDelete(null) })
+                                      }}><IconTrashOutline16 size={13} /> {t('delete')}</button>
+                                      <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => { setConfirmingDelete(null) }}>
+                                        {t('cancel')}
+                                      </button>
+                                    </span>
+                                  )
+                                  : (
+                                    <button type="button" disabled={pendingTasks.has(task.id)} onClick={() => { setConfirmingDelete(task.id) }}>
+                                      <IconTrashOutline16 size={13} /> {t('delete')}
+                                    </button>
+                                  )}
+                              </div>
+                            </article>
+                          )}
+                      </Fragment>
+                    ))}
                   </div>
+                  {scopeOwners.size > 0 && (
+                    <div className={css.scopeMap}>
+                      <span className={css.detailLabel}>{t('scopeMap')}</span>
+                      {[...scopeOwners.entries()].map(([scope, owners]) => {
+                        const named = [...owners].filter(owner => owner !== '')
+                        const shared = named.length > 1
+                        return (
+                          <span key={scope} className={shared ? `${css.scopeRow} ${css.warning}` : css.scopeRow}>
+                            <code>{scope}</code>
+                            <span>{named.length === 0 ? t('scopeUnowned') : named.join(', ')}</span>
+                            {shared && <span>{t('scopeShared')}</span>}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
                 </section>
                 <footer className={css.workspaceFooter}>
                   <span><StateDot state="ongoing" /> {t('liveState')}</span>

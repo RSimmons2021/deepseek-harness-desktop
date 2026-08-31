@@ -273,6 +273,35 @@ describe('TeamAction', () => {
     await waitFor(() => { expect(screen.queryByPlaceholderText(zh.messageText)).toBeNull() })
   })
 
+  it('groups the board into lanes and names the task a blocker actually is', async () => {
+    const blocker: TeamTask = { ...task, id: 'task-9' as TeamTaskId, subject: 'Land the migration', status: 'in_progress' }
+    const blocked: TeamTask = {
+      ...task, id: 'task-10' as TeamTaskId, subject: 'Follow-up', status: 'pending', ready: false,
+      blockedBy: ['task-9' as TeamTaskId],
+    }
+    const board: TeamView = { ...view, tasks: [blocked, blocker] }
+    render(<TeamAction {...props(actions({ load: () => Promise.resolve({ ok: true, value: board }) }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+
+    // Running work leads, then what is waiting on it.
+    const lanes = (await screen.findAllByRole('heading', { level: 4 })).map(h => h.textContent)
+    expect(lanes[0]).toContain(zh.laneActive)
+    expect(lanes[1]).toContain(zh.laneBlocked)
+    // A raw id says nothing about what is in the way.
+    expect(screen.getByText(/Land the migration/u, { selector: 'span' })).toBeTruthy()
+  })
+
+  it('shows which members claim the same write scopes, since scopes are advisory', async () => {
+    const mine: TeamTask = { ...task, id: 'task-11' as TeamTaskId, ownerName: 'worker', writeScopes: ['src/'] }
+    const yours: TeamTask = { ...task, id: 'task-12' as TeamTaskId, ownerName: 'lead', writeScopes: ['src/'] }
+    const board: TeamView = { ...view, tasks: [mine, yours] }
+    render(<TeamAction {...props(actions({ load: () => Promise.resolve({ ok: true, value: board }) }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+
+    expect(await screen.findByText(zh.scopeMap)).toBeTruthy()
+    expect(screen.getByText(zh.scopeShared)).toBeTruthy()
+  })
+
   it('withholds the spawn control until the Team has work to delegate', async () => {
     const idle: TeamView = { ...view, tasks: [] }
     const load = vi.fn(() => Promise.resolve({ ok: true as const, value: idle }))
@@ -726,8 +755,9 @@ describe('TeamAction', () => {
     render(<TeamAction {...props(actions({ load, openTeammate }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     expect(await screen.findByText('provider failed')).toBeTruthy()
-    expect(screen.getByText(zh.ready)).toBeTruthy()
-    expect(screen.getByText(zh.blocked)).toBeTruthy()
+    // Readiness is stated by the lane a task sits in, not repeated per card.
+    expect(screen.getByText(zh.laneReady)).toBeTruthy()
+    expect(screen.getByText(zh.laneBlocked)).toBeTruthy()
     expect(screen.getByRole<HTMLButtonElement>('button', { name: /failed-worker/u }).disabled).toBe(true)
     expect(screen.getByRole<HTMLButtonElement>('button', { name: /provisioning-worker/u }).disabled).toBe(true)
 

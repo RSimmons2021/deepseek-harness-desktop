@@ -37,6 +37,8 @@ kind: "package-reference"
 
 运行中的 teammate card 在 card button 旁边显示中断控件 —— 绝不放在其内部，因为 card button 本身就是打开 teammate 的目标，而 button 不能嵌套。
 
+任务板按其自身派生的 readiness 分为若干 lane —— 进行中、可开始、被阻塞、已完成 —— 因此正在运行的、可以开始的与仍在等待的一目了然；task 通过所在 lane 表达 readiness，而不在每张卡片上重复。Blocker 显示其对应 task 的名称而非 id。板下方的 write-scope 映射列出每个未完成 task 声明的 scope 及其声明者，并标记被多个成员同时持有的 scope：scope 是提示性的而非锁，因此这是在两个成员同时编辑相同路径之前唯一能看到重叠的地方。
+
 任务板展示 task identity、owner、blocker、readiness、提示性 write scope 与重叠 warning。用户可以通过 `agentTeams/createTask` 与 `agentTeams/updateTask` 创建、编辑、分配或取消分配、完成、重开和删除任务。每次 update 都发送当前显示的 revision，create 或 update rejection 都保留为显式 business result。
 
 -----

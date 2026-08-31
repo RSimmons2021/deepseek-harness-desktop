@@ -732,6 +732,53 @@
   border-radius: 50%;
 }
 
+/* Lane heading: the board reads as a pipeline rather than one flat list. */
+.laneHeading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  color: var(--team-ink-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.laneHeading span {
+  padding: 1px 7px;
+  border-radius: 100px;
+  background: color-mix(in srgb, var(--team-ink) 10%, transparent);
+  letter-spacing: 0.06em;
+}
+
+/*
+ * Write scopes are advisory rather than locks, so this is the only place two
+ * members claiming the same paths is visible before they both edit them.
+ */
+.scopeMap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--team-stroke);
+}
+
+.scopeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--team-ink-muted);
+  font-size: 11px;
+}
+
+.scopeRow code {
+  color: var(--team-ink);
+  font-family: var(--ds-font-family-code);
+}
+
 .taskDock {
   margin-top: clamp(18px, 2vw, 32px);
   padding: 18px;

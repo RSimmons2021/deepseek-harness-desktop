@@ -33,6 +33,8 @@ Opening the workspace calls `agentTeams/view`. Roster cards show durable names, 
 
 ### Manage the task board
 
+The board is grouped into the lanes its own derived readiness implies — in progress, ready, blocked, done — so what is running, what can start, and what is waiting on something else separate at a glance; a task states its readiness through the lane it sits in rather than repeating it per card. Blockers name the tasks they are, not their ids. Beneath the board, a write-scope map lists every scope an unfinished task claims with the members claiming it, and marks the ones more than one member holds: scopes are advisory rather than locks, so this is the only place an overlap is visible before two members edit the same paths.
+
 The task board shows task identity, owner, blockers, readiness, advisory write scopes, and overlap warnings. A user can create, edit, assign or unassign, complete, reopen, and delete tasks through `agentTeams/createTask` and `agentTeams/updateTask`. Every update sends the displayed revision, and create or update rejections remain explicit business results.
 
 -----
