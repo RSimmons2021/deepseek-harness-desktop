@@ -1428,8 +1428,11 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     hookContext: '',
     slotInject: '',
     declaredBy: 'the runtime itself (built in; always present)',
-    occupants: [],
-    replaceRisk: 'none',
+    occupants: [
+      'client-ui-layout DesktopFrame',
+      'client-ui-layout AppFrame',
+    ],
+    replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'root\', () => ctx.slots.register(\n      { name: \'root\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
     source: 'packages/client/ui-renderer/src/client/registry.ts:43',
   },

@@ -199,8 +199,9 @@ export function slotRegistrations(file: ScannedFile): SlotRegistration[] {
       && node.expression.name.text === 'register'
       && isSlotsReceiver(node.expression.expression, file.sf)
       && node.arguments.length >= 1) {
-      const options = node.arguments[0]
-      if (options !== undefined && ts.isObjectLiteralExpression(options)) {
+      const written = node.arguments[0]
+      const options = written === undefined ? undefined : registrationOptions(written, file.sf)
+      if (options !== undefined) {
         const key = stringProperty(options, 'name')
         if (key !== undefined) {
           const id = stringProperty(options, 'id')
@@ -407,6 +408,71 @@ function stringProperty(options: ts.ObjectLiteralExpression, name: string): stri
     if (ts.isStringLiteral(property.initializer)) return property.initializer.text
   }
   return undefined
+}
+
+/**
+ * The property list one register call passes, with a spread of a local
+ * `const` object literal folded in.
+ *
+ * A registration that shares its seat description across two branches writes
+ * `{ ...seats, children }`, and reading only the written properties would drop
+ * the registration entirely — the catalog would then report the slot as
+ * unoccupied and tell a plugin author it is safe to register into.
+ * @param written - the first argument as written at the call site.
+ * @param sf - the source file the call was scanned from.
+ * @returns an object literal carrying the folded properties, or undefined when
+ *   the argument is not an object literal this scanner can read.
+ */
+function registrationOptions(
+  written: ts.Expression,
+  sf: ts.SourceFile,
+): ts.ObjectLiteralExpression | undefined {
+  if (!ts.isObjectLiteralExpression(written)) return undefined
+  const spreads = written.properties.filter(ts.isSpreadAssignment)
+  if (spreads.length === 0) return written
+  const claimed = new Set(written.properties.flatMap(
+    property => (property.name === undefined ? [] : [memberName(property.name)]),
+  ))
+  const folded = [...written.properties]
+  for (const spread of spreads) {
+    if (!ts.isIdentifier(spread.expression)) continue
+    const source = localObjectLiteral(spread.expression.text, sf)
+    if (source === undefined) continue
+    // Only the properties the call site did not write itself: an explicit one
+    // overrides what it spreads, exactly as it does at runtime.
+    for (const property of source.properties) {
+      if (property.name === undefined || claimed.has(memberName(property.name))) continue
+      folded.push(property)
+    }
+  }
+  return ts.factory.updateObjectLiteralExpression(written, folded)
+}
+
+/**
+ * Find one file-local `const <name> = { … }` initializer.
+ * @param name - the identifier a spread referenced.
+ * @param sf - the source file to search.
+ * @returns the object literal it was initialized with, or undefined.
+ */
+function localObjectLiteral(name: string, sf: ts.SourceFile): ts.ObjectLiteralExpression | undefined {
+  let found: ts.ObjectLiteralExpression | undefined
+  const visit = (node: ts.Node): void => {
+    if (found !== undefined) return
+    if (ts.isVariableDeclaration(node)
+      && ts.isIdentifier(node.name)
+      && node.name.text === name
+      && node.initializer !== undefined) {
+      // `as const` and other assertions wrap the literal the seat describes.
+      const initializer = ts.isAsExpression(node.initializer) || ts.isTypeAssertionExpression(node.initializer)
+        ? node.initializer.expression
+        : node.initializer
+      if (ts.isObjectLiteralExpression(initializer)) found = initializer
+      return
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sf)
+  return found
 }
 
 /** The SlotMap keys a registration's `children` table declares. */
