@@ -26,7 +26,7 @@ function wire(overrides: Record<string, unknown> = {}) {
 describe('SignInCard', () => {
   it('starts an attempt on the flow it was given and shows the page to open', async () => {
     const api = wire()
-    render(<SignInCard api={api} t={t} readOnly={false} />)
+    render(<SignInCard api={api} t={t} readOnly={false} onAuthorized={() => {}} />)
     fireEvent.click(await screen.findByRole('button', { name: en.signIn }))
     await waitFor(() => { expect(screen.getByRole('link', { name: en.signInOpen })).toBeTruthy() })
     // The first method is the flow's preferred one.
@@ -40,7 +40,7 @@ describe('SignInCard', () => {
       { key: 'z-plan', label: 'Z Plan', methods: [{ id: 'oauth', label: 'OAuth' }], subscription: true, inFlight: false },
       { key: 'b-keys', label: 'B Keys', methods: [{ id: 'api-key', label: 'Key' }], subscription: false, inFlight: false },
     ]))
-    render(<SignInCard api={wire({ list })} t={t} readOnly={false} />)
+    render(<SignInCard api={wire({ list })} t={t} readOnly={false} onAuthorized={() => {}} />)
     await screen.findByText('Z Plan')
     const labels = screen.getAllByRole('listitem').map(item => item.textContent?.replace(en.signIn, ''))
     expect(labels).toEqual(['Z Plan', 'A Keys', 'B Keys'])
@@ -52,7 +52,7 @@ describe('SignInCard', () => {
       { key: 'second', label: 'Second', methods: [{ id: 'oauth', label: 'OAuth' }], subscription: true, inFlight: false },
     ]))
     const begin = vi.fn(() => ok({ key: 'second', phase: 'running', notice: { message: 'Open it', url: 'https://auth.example' } }))
-    render(<SignInCard api={wire({ list, begin, poll: vi.fn(() => ok({ key: 'second', phase: 'running' })) })} t={t} readOnly={false} />)
+    render(<SignInCard api={wire({ list, begin, poll: vi.fn(() => ok({ key: 'second', phase: 'running' })) })} t={t} readOnly={false} onAuthorized={() => {}} />)
     await screen.findByText('Second')
     fireEvent.click(screen.getAllByRole('button', { name: en.signIn })[1]!)
 
@@ -63,8 +63,21 @@ describe('SignInCard', () => {
     expect(row?.textContent).not.toContain('First')
   })
 
+  it('reports the route a committed grant belongs to, so the page can declare it', async () => {
+    const onAuthorized = vi.fn()
+    const api = wire({
+      list: vi.fn(() => ok([{ key: 'llm-pi-ai/openai-codex', label: 'OpenAI Codex', methods: [{ id: 'oauth', label: 'OAuth' }], subscription: true, inFlight: false }])),
+      begin: vi.fn(() => ok({ key: 'llm-pi-ai/openai-codex', phase: 'running' })),
+      poll: vi.fn(() => ok({ key: 'llm-pi-ai/openai-codex', phase: 'authorized' })),
+    })
+    render(<SignInCard api={api} t={t} readOnly={false} onAuthorized={onAuthorized} />)
+    fireEvent.click(await screen.findByRole('button', { name: en.signIn }))
+    // The record's scope names the plugin; the route is the segment after it.
+    await waitFor(() => { expect(onAuthorized).toHaveBeenCalledWith('openai-codex') })
+  })
+
   it('renders nothing while no flow is registered', async () => {
-    const { container } = render(<SignInCard api={wire({ list: vi.fn(() => ok([])) })} t={t} readOnly={false} />)
+    const { container } = render(<SignInCard api={wire({ list: vi.fn(() => ok([])) })} t={t} readOnly={false} onAuthorized={() => {}} />)
     await waitFor(() => { expect(container.firstChild).toBeNull() })
   })
 
@@ -73,12 +86,12 @@ describe('SignInCard', () => {
       ok: false as const,
       error: { code: 'unavailable', message: 'no authorization provider is mounted', details: {} },
     }))
-    render(<SignInCard api={wire({ list: refused })} t={t} readOnly={false} />)
+    render(<SignInCard api={wire({ list: refused })} t={t} readOnly={false} onAuthorized={() => {}} />)
     expect(await screen.findByText('no authorization provider is mounted')).toBeTruthy()
   })
 
   it('offers no sign-in while the settings provider is read-only', async () => {
-    render(<SignInCard api={wire()} t={t} readOnly />)
+    render(<SignInCard api={wire()} t={t} readOnly onAuthorized={() => {}} />)
     await waitFor(() => {
       expect(screen.getByRole('button', { name: en.signIn }).hasAttribute('disabled')).toBe(true)
     })

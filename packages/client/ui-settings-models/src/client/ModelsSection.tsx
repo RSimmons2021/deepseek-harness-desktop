@@ -267,6 +267,26 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
       .finally(() => { setDeleting(false) })
   }
 
+  /**
+   * Declare the route a fresh sign-in belongs to, unless one already exists.
+   *
+   * The adapter runs the routes the settings document declares and is mounted
+   * with none, so a committed grant on its own leaves the provider invisible:
+   * the credential is stored and nothing reads it. A route with no `apiKeyEnv`
+   * defers to the adapter's own credential discovery, which is exactly where
+   * the grant just landed.
+   */
+  const adoptSignedInRoute = async (route: string): Promise<void> => {
+    if (state.rows.some(row => row.entry.provider === route)) {
+      await controller.load()
+      return
+    }
+    const revision = state.namespaces.get('llm-pi-ai')?.revision
+    if (revision === undefined) return
+    await api.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', route], value: {} }], revision)
+    await controller.load()
+  }
+
   if (state.status === 'idle') void controller.load()
   if (state.status === 'error') {
     /* v8 ignore next -- an error status always carries text; the fallback satisfies the nullable type */
@@ -544,7 +564,12 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
               </div>
             )}
       </div>
-      <SignInCard api={api.authorization} t={t} readOnly={!state.writable} />
+      <SignInCard
+        api={api.authorization}
+        t={t}
+        readOnly={!state.writable}
+        onAuthorized={(route) => { void adoptSignedInRoute(route) }}
+      />
       {renderSlot('settings.models.footer', {})}
       <Modal
         open={deleteTarget !== undefined}

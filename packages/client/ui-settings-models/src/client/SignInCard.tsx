@@ -25,6 +25,13 @@ export interface SignInCardProps {
   t: (key: keyof typeof en) => string
   /** Disable starting an attempt (read-only settings provider). */
   readOnly: boolean
+  /**
+   * A sign-in committed its credential. Signing in does not by itself make the
+   * provider usable — the adapter runs the routes the settings document
+   * declares, and a grant with no route is a credential nothing reads — so the
+   * page is told which route the new credential belongs to.
+   */
+  onAuthorized: (route: string) => void
 }
 
 /**
@@ -32,7 +39,7 @@ export interface SignInCardProps {
  * @param props - the Remote face, the localizer, and the read-only flag.
  * @returns the card, or nothing while no flow is registered.
  */
-export function SignInCard({ api, t, readOnly }: SignInCardProps) {
+export function SignInCard({ api, t, readOnly, onAuthorized }: SignInCardProps) {
   const [flows, setFlows] = useState<AuthorizationFlowView[] | null>(null)
   const [listError, setListError] = useState<string | null>(null)
   const [state, setState] = useState<AuthorizationStateView | null>(null)
@@ -65,6 +72,11 @@ export function SignInCard({ api, t, readOnly }: SignInCardProps) {
         if (stopped || !result.ok) return
         setState(result.value)
         if (result.value.phase !== 'running') {
+          // The record's scope names the owning plugin; the segment after it is
+          // the adapter's route id.
+          if (result.value.phase === 'authorized') {
+            onAuthorized(key.slice(key.indexOf('/') + 1))
+          }
           await loadFlows()
           return
         }
@@ -72,7 +84,7 @@ export function SignInCard({ api, t, readOnly }: SignInCardProps) {
     }
     void tick()
     return () => { stopped = true }
-  }, [api, loadFlows, state?.phase, state?.key])
+  }, [api, loadFlows, onAuthorized, state?.phase, state?.key])
 
   const start = useCallback(async (flow: AuthorizationFlowView): Promise<void> => {
     active.current = flow.key
