@@ -39,6 +39,10 @@ kind: "package-reference"
 
 任务板按其自身派生的 readiness 分为若干 lane —— 进行中、可开始、被阻塞、已完成 —— 因此正在运行的、可以开始的与仍在等待的一目了然；task 通过所在 lane 表达 readiness，而不在每张卡片上重复。Blocker 显示其对应 task 的名称而非 id。板下方的 write-scope 映射列出每个未完成 task 声明的 scope 及其声明者，并标记被多个成员同时持有的 scope：scope 是提示性的而非锁，因此这是在两个成员同时编辑相同路径之前唯一能看到重叠的地方。
 
+### 查看已发生的事情
+
+板下方通过 `agentTeams/activity` 按最新在前列出 Team 记录过的事情。每一行标明该变化被记录的时间、它属于哪一类、涉及的 teammate 或 task，以及它到达的状态。已完成的 task 与已送达的 message 在板上不留下其他痕迹，因此这里是它们唯一得以保留的地方。本次构建没有对应文案的 phase 或 status 会显示其记录值，而不是丢弃该行。
+
 任务板展示 task identity、owner、blocker、readiness、提示性 write scope 与重叠 warning。用户可以通过 `agentTeams/createTask` 与 `agentTeams/updateTask` 创建、编辑、分配或取消分配、完成、重开和删除任务。每次 update 都发送当前显示的 revision，create 或 update rejection 都保留为显式 business result。
 
 -----
@@ -51,7 +55,7 @@ kind: "package-reference"
 
 Client export 挂载来自 [`@deepseek-ai/dsh-experimental-agent-team/remote`](../agent-team/README.zh.md) 的生成式 `ctx.remote.agentTeams` contribution，然后通过 Cordis effect 注册 locale dictionary 与一个 conversation-header slot。Dispose plugin fiber 会移除这两项 registration。
 
-Workspace 打开期间会保持一个有界 `agentTeams/waitForChange` 调用，在每次观察到变化时重新加载整个 view 并重新进入等待；transport failure 会结束该循环，并把手动刷新留作退路。其中两个组件改编自 [prompt-kit](https://www.prompt-kit.com)：`TextShimmer` 标示 host 仍在置备中的 teammate，`Loader` 在首个 view 加载期间代替 roster。prompt-kit 提供的是基于 Tailwind 的 shadcn/ui 组件，而本 client 并不使用 Tailwind，因此它们是针对同一公开契约的重新实现而非安装：以 CSS module 与主题 token 取代 utility class，并由调用方传入本地化文案而非字面量。`TextShimmer` 保留原有的 `duration` 与 `spread` prop，包括 5..45 的钳制；`Loader` 在原有十二个 variant 中只保留 `dots` 与 `typing`，因为在此没有消费者的 variant 会成为无归属的公开选择。
+Workspace 打开期间会保持一个有界 `agentTeams/waitForChange` 调用，在每次观察到变化时重新加载整个 view 并重新进入等待；transport failure 会结束该循环，并把手动刷新留作退路。每次重新加载都会在读取 view 的同时读取记录历史，因此板与时间线跟随同一个变化信号；在会话已切换之后才返回的历史会被丢弃，而被拒绝的历史不会影响与之同行的板。其中两个组件改编自 [prompt-kit](https://www.prompt-kit.com)：`TextShimmer` 标示 host 仍在置备中的 teammate，`Loader` 在首个 view 加载期间代替 roster。prompt-kit 提供的是基于 Tailwind 的 shadcn/ui 组件，而本 client 并不使用 Tailwind，因此它们是针对同一公开契约的重新实现而非安装：以 CSS module 与主题 token 取代 utility class，并由调用方传入本地化文案而非字面量。`TextShimmer` 保留原有的 `duration` 与 `spread` prop，包括 5..45 的钳制；`Loader` 在原有十二个 variant 中只保留 `dots` 与 `typing`，因为在此没有消费者的 variant 会成为无归属的公开选择。
 
 开始 create 或 update 会让更早的 refresh 失效。成功后会重新读取完整 Team view，使每个 task 的派生字段保持最新。`team-task-conflict` 结果仅在重新读取成功后显示状态陈旧提示；如果重新读取失败，则保留该错误。由于 Team service 把任务文本或 scope 编辑与 dependency 修改公开为独立 action，两者使用两个连续的 compare-and-set mutation。
 

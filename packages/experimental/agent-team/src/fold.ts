@@ -11,6 +11,7 @@ import type {
   TeamMessageSnapshot,
   TeamTaskId,
   TeamTaskSnapshot,
+  TeamActivityEntry,
 } from './types.ts'
 import {
   TeamId as toTeamId,
@@ -275,6 +276,67 @@ export function applyTeamEvent(state: TeamFoldState, event: SessionEvent): void 
     /* v8 ignore next 2 -- TeamEventType is closed and every member is handled above. */
     default:
       return
+  }
+}
+
+/**
+ * Replay one root Session into its current Team state.
+ * @param rootId - root Session identity selecting Team-owned records.
+ * @param events - complete contiguous Session log.
+ * @returns mutable replay state at the end of the log.
+ */
+/**
+ * Project one recorded event into a timeline entry, or nothing when the event
+ * is not a Team change.
+ *
+ * The fold state resolves the ids an event carries into the names a person
+ * reads: a delivery records only the target Session, and a queued message only
+ * its sender's name, so both are completed here rather than at every surface.
+ * @param event - one event from the Lead Session log.
+ * @param state - the fold the log has produced so far.
+ * @returns the entry, or undefined for events this Team does not own.
+ */
+export function activityOf(
+  event: SessionEvent,
+  state: TeamFoldState,
+): TeamActivityEntry | undefined {
+  if (!isTeamEvent(event)) return undefined
+  // A fork inherits the ancestor Team's records. The fold ignores them, so the
+  // history must too, or a forked Lead reads another Team's past as its own.
+  if (event.data.teamId !== state.id) return undefined
+  const at = { seq: event.seq, time: event.time }
+  switch (event.type) {
+    case 'team/member': {
+      const member = event.data.member
+      return { ...at, kind: 'member', subject: member.name, state: member.phase }
+    }
+    case 'team/task': {
+      const task = event.data.task
+      return { ...at, kind: 'task', subject: task.subject, state: task.status }
+    }
+    case 'team/message/queued': {
+      const message = event.data.message
+      return {
+        ...at,
+        kind: 'message-queued',
+        subject: message.senderName,
+        target: state.members.get(message.targetId)?.name ?? String(message.targetId),
+      }
+    }
+    case 'team/message/delivered': {
+      // The queued record carries the sender, so a delivery whose enqueue is
+      // no longer in the fold names the target it reached and nothing else.
+      const message = state.messages.get(event.data.messageId)
+      return {
+        ...at,
+        kind: 'message-delivered',
+        subject: message?.senderName ?? '',
+        target: state.members.get(event.data.targetId)?.name ?? String(event.data.targetId),
+      }
+    }
+    /* v8 ignore next 2 -- TeamEventType is closed and every member is handled above. */
+    default:
+      return undefined
   }
 }
 

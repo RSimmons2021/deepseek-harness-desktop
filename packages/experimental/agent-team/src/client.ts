@@ -6,6 +6,8 @@ export type {
   RemoteSpawnTeammateRequest,
   SendTeamMessageResult,
   SpawnTeammateResult,
+  TeamActivityEntry,
+  TeamActivityKind,
   TeamInterruptMutationResult,
   TeamInterruptView,
   TeamMemberView,

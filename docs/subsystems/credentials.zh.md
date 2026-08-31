@@ -122,6 +122,56 @@ async begin(request: AuthorizationRequest): Promise<AuthorizationOutcome>
 
 Source: [`packages/credentials/authorization/src/index.ts`](../../packages/credentials/authorization/src/index.ts)
 
+<a id="ctxauthorizationcontroller--authorizationcontroller"></a>
+
+### `ctx.authorizationController` — `AuthorizationController`
+
+Host service backing the generated `ctx.remote.authorization` namespace. Registered whether or not the authorization seam is mounted, so a page that asks without it gets an actionable refusal rather than a missing method.
+
+```ts cordis-catalog
+/**
+ * List the flows a page can offer to sign into.
+ * @returns one row per registered flow, with the methods it accepts.
+ */
+@Remote list(): AuthorizationFlowView[]
+
+/**
+ * Start one attempt and return without waiting for the human.
+ *
+ * The attempt outlives this call: a sign-in takes as long as a person takes,
+ * and a request held open for that would time out on any transport. The page
+ * follows it through {@link poll}.
+ * @param key - the credential the attempt authorizes.
+ * @param method - which sign-in method to run; the adapter's own choice when absent.
+ * @returns the state the attempt starts in.
+ */
+@Remote begin(key: string, method?: string): AuthorizationStateView
+
+/**
+ * Read the attempt's newest state.
+ * @param key - the credential record whose attempt to report on.
+ * @returns the phase, the newest notice, and any question awaiting an answer.
+ */
+@Remote poll(key: string): AuthorizationStateView
+
+/**
+ * Answer the question the flow is waiting on.
+ * @param key - the credential whose attempt is waiting.
+ * @param value - the human's answer to the question the flow asked.
+ * @returns the state after the answer was delivered.
+ */
+@Remote answer(key: string, value: string): AuthorizationStateView
+
+/**
+ * Withdraw the attempt, which the flow reports as a cancellation.
+ * @param key - the credential record whose attempt to withdraw.
+ * @returns the state after the withdrawal was requested.
+ */
+@Remote cancel(key: string): AuthorizationStateView
+```
+
+Source: [`packages/api/settings-controller/src/authorization.ts`](../../packages/api/settings-controller/src/authorization.ts)
+
 <a id="ctxcredentials--credentialprovider-abstract-seam"></a>
 
 ### `ctx.credentials` — `CredentialProvider` (abstract seam)

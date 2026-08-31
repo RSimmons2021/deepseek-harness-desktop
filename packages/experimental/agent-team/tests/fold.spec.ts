@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionEventMap, SessionEventType } from '@deepseek-ai/dsh-session'
 import {
+  activityOf,
   applyTeamEvent,
   emptyTeamFoldState,
   foldTeam,
@@ -321,5 +322,51 @@ describe('Agent Teams fold', () => {
     } as unknown as SessionEvent
     expect(() => foldTeam(ROOT, [inherited]))
       .toThrow(/persisted Agent Teams team\/task payload is invalid/)
+  })
+
+  it('projects every Team record into one history entry and skips the rest', () => {
+    const delivered = message({ id: TeamMessageId('message-9'), senderName: 'worker-a' })
+    const records: SessionEvent[] = [
+      event('team/member', { version: 1, teamId: TEAM, member: member() }, 1),
+      event('team/task', { version: 1, teamId: TEAM, task: task({ status: 'in_progress' }) }, 2),
+      event('team/message/queued', { version: 1, teamId: TEAM, message: delivered }, 3),
+      event('team/message/delivered', {
+        version: 1, teamId: TEAM, messageId: delivered.id, targetId: CHILD,
+      }, 4),
+    ]
+    const state = foldTeam(ROOT, records)
+
+    expect(records.map(record => activityOf(record, state))).toEqual([
+      { seq: 1, time: 1, kind: 'member', subject: 'worker-a', state: 'provisioning' },
+      { seq: 2, time: 2, kind: 'task', subject: 'subject', state: 'in_progress' },
+      { seq: 3, time: 3, kind: 'message-queued', subject: 'worker-a', target: 'worker-a' },
+      { seq: 4, time: 4, kind: 'message-delivered', subject: 'worker-a', target: 'worker-a' },
+    ])
+    // Only the four Team records carry history; every other event is skipped.
+    const title = event('session/title', {
+      title: 'lead', messageSeqs: [], source: { kind: 'fallback' },
+    }, 5)
+    expect(activityOf(title, state)).toBeUndefined()
+  })
+
+  it('reads a message whose sender and target left the fold, and skips another Team\'s past', () => {
+    const state = emptyTeamFoldState(ROOT)
+    const orphan = event('team/message/delivered', {
+      version: 1, teamId: TEAM, messageId: TeamMessageId('message-gone'), targetId: CHILD,
+    }, 6)
+
+    expect(activityOf(orphan, state)).toEqual({
+      seq: 6, time: 6, kind: 'message-delivered', subject: '', target: CHILD,
+    })
+    const strayTarget = event('team/message/queued', {
+      version: 1, teamId: TEAM, message: message({ targetId: SessionId('departed') }),
+    }, 7)
+    // A message addressed to a member the fold no longer holds names the id.
+    expect(activityOf(strayTarget, state)).toMatchObject({ target: 'departed' })
+    const stranger = event('team/message/queued', {
+      version: 1, teamId: TeamId('ancestor'), message: message(),
+    }, 8)
+    // A fork inherits the ancestor's records; the history must not claim them.
+    expect(activityOf(stranger, state)).toBeUndefined()
   })
 })

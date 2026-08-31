@@ -42,7 +42,7 @@ kind: "package-reference"
 
 Teammate provider 改为配置在 `agent-team` row 上。它们是 Team 范围的部署选择，spawn tool 通过 `ctx.agentTeams.providerFor` 读取请求的 context mode 所解析出的 provider，因此 model-facing tool 与浏览器 Remote 不会对 `fresh` 与 `fork` 的启动方式产生分歧。
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-experimental-tool-agent-team)是每个受支持字段及其 JSDoc 的穷尽式真源。
+本插件自身不接受任何配置；生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-experimental-agent-team)是 `agent-team` row 所接受字段的穷尽式真源。
 
 试试这样要求 Lead 模型：「创建一个名为 reviewer 的 teammate 检查 diff，再把变更摘要发给 reviewer」。模型会调用创建工具，然后调用消息工具。
 

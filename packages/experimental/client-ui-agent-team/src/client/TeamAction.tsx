@@ -6,6 +6,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   RemoteSendTeamMessageRequest,
   RemoteSpawnTeammateRequest,
+  TeamActivityEntry,
+  TeamActivityKind,
   TeamMemberView as TeamRosterMember,
   TeamMessageMutationResult,
   TeamSpawnMutationResult,
@@ -88,6 +90,12 @@ export interface TeamActionInjected {
    * follow the running Team without the user asking for a refresh.
    */
   waitForChange: (sessionId: SessionId, timeoutMs: number) => Promise<TeamActionResult<TeamWaitResult>>
+  /**
+   * Read the Team's recorded history, newest first. The board shows where the
+   * Team is now; this shows how it got there, and is the only place a completed
+   * task or a delivered message survives.
+   */
+  activity: (sessionId: SessionId, limit: number) => Promise<TeamActionResult<TeamActivityEntry[]>>
   openTeammate: (sessionId: SessionId, member: TeamRosterMember) => Promise<void>
 }
 
@@ -99,7 +107,7 @@ export type TeamActionProps =
 export type TeamSurfaceProps = Pick<
   TeamActionProps,
   | 'sessionId' | 'load' | 'createTask' | 'updateTask' | 'spawnTeammate'
-  | 'sendMessage' | 'interrupt' | 'waitForChange' | 'openTeammate'
+  | 'sendMessage' | 'interrupt' | 'waitForChange' | 'activity' | 'openTeammate'
   | 'useColorScheme' | 'toggleTheme' | 't'
 > & {
   /** Keep the designed Team workspace mounted as the application surface. */
@@ -127,6 +135,9 @@ const EMPTY_SPAWN: SpawnDraft = { name: '', description: '', prompt: '', context
 
 /** Tiles the roster keeps on screen so a nearly empty Team still reads as a row. */
 const ROSTER_MIN_TILES = 4
+
+/** Timeline entries kept on screen; the service caps one read at 200. */
+const ACTIVITY_LIMIT = 40
 
 /** Board lanes, in the order an operator reads them: now, next, waiting, over. */
 const LANE_ORDER = ['laneActive', 'laneReady', 'laneBlocked', 'laneDone'] as const
@@ -168,6 +179,51 @@ function statusKey(status: TeamTask['status']): TeamKey {
   }
 }
 
+/** Copy key naming which kind of change one recorded entry was. */
+function activityKindKey(kind: TeamActivityKind): TeamKey {
+  switch (kind) {
+    case 'member': return 'activityKindMember'
+    case 'task': return 'activityKindTask'
+    case 'message-queued':
+    case 'message-delivered': return 'activityKindMessage'
+  }
+}
+
+/**
+ * Copy key for the state a recorded change reached. The state arrives as the
+ * durable phase or status string, so a vocabulary this build does not know
+ * renders raw rather than dropping the row.
+ */
+function activityStateKey(entry: TeamActivityEntry): TeamKey | undefined {
+  if (entry.kind === 'message-queued') return 'activityQueued'
+  if (entry.kind === 'message-delivered') return 'activityDelivered'
+  switch (entry.state) {
+    case 'provisioning': return 'phase.provisioning'
+    case 'active': return 'phase.active'
+    case 'failed': return 'phase.failed'
+    case 'pending': return 'status.pending'
+    case 'in_progress': return 'status.in_progress'
+    case 'completed': return 'status.completed'
+    case 'deleted': return 'status.deleted'
+    default: return undefined
+  }
+}
+
+/** Settled changes read as done, a failed teammate as an error, the rest as motion. */
+function activityDot(entry: TeamActivityEntry): 'ongoing' | 'done' | 'error' {
+  if (entry.state === 'failed') return 'error'
+  if (entry.kind === 'message-delivered' || entry.state === 'completed') return 'done'
+  return 'ongoing'
+}
+
+function formatRecordedTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
 function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
   switch (status) {
     case 'running': return 'memberStatus.running'
@@ -181,12 +237,13 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
   sessionId, load, createTask, updateTask, spawnTeammate, sendMessage, interrupt, waitForChange,
-  openTeammate, useColorScheme, toggleTheme, t, standalone = false,
+  activity, openTeammate, useColorScheme, toggleTheme, t, standalone = false,
 }: TeamSurfaceProps) {
   const colorScheme = useColorScheme(scheme => scheme)
   const [open, setOpen] = useState(standalone)
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<TeamView | null>(null)
+  const [history, setHistory] = useState<TeamActivityEntry[]>([])
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [createDraft, setCreateDraft] = useState<Draft>(EMPTY_DRAFT)
@@ -265,12 +322,16 @@ export function TeamAction({
     if (result.ok) {
       setView(result.value)
       setError(null)
+      // The history follows the same change signal as the board, so one reload
+      // keeps where the Team is and how it got there in step.
+      const recorded = await activity(requestedSession, ACTIVITY_LIMIT)
+      if (sessionRef.current === requestedSession && recorded.ok) setHistory(recorded.value)
       return true
     } else {
       setError(failureText(result.error))
       return false
     }
-  }, [load, sessionId])
+  }, [activity, load, sessionId])
 
   useEffect(() => {
     if (!standalone) return
@@ -950,6 +1011,37 @@ export function TeamAction({
                         )
                       })}
                     </div>
+                  )}
+                </section>
+                <section className={css.activityDock} aria-labelledby="agent-team-activity-heading">
+                  <div className={css.sectionTitle}>
+                    <div>
+                      <span className={css.eyebrow}>{t('activityEyebrow')}</span>
+                      <h3 id="agent-team-activity-heading">{t('activityTitle')}</h3>
+                    </div>
+                  </div>
+                  {history.length === 0 && <div className={css.notice}>{t('activityEmpty')}</div>}
+                  {history.length > 0 && (
+                    <ol className={css.activity} data-team-activity>
+                      {history.map((entry) => {
+                        const stateKey = activityStateKey(entry)
+                        return (
+                          <li key={entry.seq} className={css.activityRow}>
+                            <time className={css.activityTime} dateTime={new Date(entry.time).toISOString()}>
+                              {formatRecordedTime(entry.time)}
+                            </time>
+                            <StateDot state={activityDot(entry)} />
+                            <span className={css.activityKind}>{t(activityKindKey(entry.kind))}</span>
+                            <span className={css.activitySubject}>
+                              {entry.target === undefined ? entry.subject : `${entry.subject} → ${entry.target}`}
+                            </span>
+                            <span className={css.activityState}>
+                              {stateKey === undefined ? entry.state : t(stateKey)}
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ol>
                   )}
                 </section>
                 <footer className={css.workspaceFooter}>

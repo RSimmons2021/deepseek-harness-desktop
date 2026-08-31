@@ -779,7 +779,8 @@
   font-family: var(--ds-font-family-code);
 }
 
-.taskDock {
+.taskDock,
+.activityDock {
   margin-top: clamp(18px, 2vw, 32px);
   padding: 18px;
   border: 1px solid var(--team-stroke);
@@ -1054,4 +1055,64 @@
 @keyframes ambient-blue {
   from { transform: translate3d(0.8%, 0.5%, 0) rotate(12deg) scale(1); }
   to { transform: translate3d(-2.2%, -1.4%, 0) rotate(13.5deg) scale(1.018); }
+}
+
+/*
+ * The board shows where the Team is; this shows how it got there. A completed
+ * task and a delivered message leave no other trace, so the rows stay quiet
+ * enough to scan and newest-first so the last thing that happened is at eye
+ * level with the header.
+ */
+.activity {
+  display: flex;
+  max-height: 320px;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  gap: 2px;
+  list-style: none;
+}
+
+.activityRow {
+  display: grid;
+  align-items: center;
+  padding: 5px 6px;
+  border-radius: 8px;
+  column-gap: 10px;
+  grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+  font-size: 11px;
+}
+
+.activityRow:nth-child(odd) {
+  background: color-mix(in srgb, var(--team-ink) 4%, transparent);
+}
+
+.activityTime {
+  color: var(--team-ink-muted);
+  font-family: var(--ds-font-family-code);
+  font-variant-numeric: tabular-nums;
+}
+
+.activityKind {
+  color: var(--team-ink-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.activitySubject {
+  overflow: hidden;
+  color: var(--team-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activityState {
+  padding: 1px 7px;
+  border-radius: 100px;
+  background: color-mix(in srgb, var(--team-ink) 10%, transparent);
+  color: var(--team-ink-muted);
+  white-space: nowrap;
 }

@@ -974,6 +974,34 @@ describe('Team Remote API', () => {
     expect(() => ctx.agentTeams.remoteInterrupt(lead, 'editor')).toThrow('unexpected interrupt failure')
   })
 
+  it('reads the Team history newest first and bounds the requested limit', async () => {
+    const { ctx, lead } = await setup([])
+    // The Lead log carries far more than Team records; only Team records
+    // become history.
+    lead.session.append('session/title', { title: 'lead', messageSeqs: [], source: { kind: 'fallback' } })
+    const first = await ctx.agentTeams.remoteCreateTask(lead, {
+      subject: 'Write the adapter', description: 'first', blockedBy: [], writeScopes: [],
+    })
+    if (!first.ok) throw new Error('Remote task creation did not succeed')
+    await ctx.agentTeams.remoteUpdateTask(lead, {
+      taskId: first.value.id, expectedRevision: first.value.revision, action: 'claim',
+    })
+
+    // Newest first: the claim is the last thing that happened, and each entry
+    // carries the state the record reached rather than a composed sentence.
+    expect(ctx.agentTeams.remoteActivity(lead, 40)).toEqual([
+      expect.objectContaining({ kind: 'task', subject: 'Write the adapter', state: 'in_progress' }),
+      expect.objectContaining({ kind: 'task', subject: 'Write the adapter', state: 'pending' }),
+    ])
+    expect(ctx.agentTeams.remoteActivity(lead, 1)).toEqual([
+      expect.objectContaining({ state: 'in_progress' }),
+    ])
+    for (const limit of [0, 201, 1.5, Number.NaN]) {
+      expect(() => ctx.agentTeams.remoteActivity(lead, limit))
+        .toThrow('limit must be an integer from 1 through 200')
+    }
+  })
+
   it('waits for the next Team change without a caller-supplied signal', async () => {
     const { ctx, lead } = await setup([])
     const wait = vi.spyOn(ctx.agentTeams, 'waitForChange').mockResolvedValueOnce({ timedOut: true })

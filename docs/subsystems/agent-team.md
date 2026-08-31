@@ -106,6 +106,17 @@ membership(agent: Agent): TeamMembership
 listMembers(agent: Agent): TeamMemberView[]
 
 /**
+ * Resolve the continuable-subagent provider one context mode spawns through.
+ *
+ * The provider is a deployment choice, so it has one home here beside the
+ * other Team limits: the model-facing tool and the browser Remote both read
+ * it rather than each carrying its own copy.
+ * @param context - requested teammate context mode.
+ * @returns the configured provider name for that mode.
+ */
+providerFor(context: 'fresh' | 'fork'): string
+
+/**
  * Create one named, continuable direct child of the Team Lead.
  * @param caller - exact live Lead Agent.
  * @param request - immutable name, description, prompt, context mode, provider, and cancellation.
@@ -198,6 +209,64 @@ tryMembership(agent: Agent): TeamMembership | undefined
  * @returns the committed task or a typed Team rejection.
  */
 @Remote('updateTask') remoteUpdateTask(agent: Agent, request: UpdateTeamTaskRequest): Promise<TeamTaskMutationResult>
+
+/**
+ * Create one durable teammate through the generated Remote API.
+ *
+ * The request carries no provider or cancellation: the service resolves the
+ * provider from the requested context mode, and the spawn runs to its durable
+ * active or failed edge rather than following a caller's signal.
+ * @param agent - exact live Lead Agent creating the teammate.
+ * @param request - immutable name, description, opening prompt, and context mode.
+ * @returns the active roster row, or a typed Team rejection.
+ */
+@Remote('spawnTeammate') async remoteSpawnTeammate( agent: Agent, request: RemoteSpawnTeammateRequest, ): Promise<TeamSpawnMutationResult>
+
+/**
+ * Queue one durable peer message through the generated Remote API.
+ *
+ * The request carries no cancellation: the wire cannot hold an `AbortSignal`,
+ * and the enqueue is durable before delivery is attempted, so there is no
+ * pre-queue window for a browser to cancel.
+ * @param agent - exact live Team member sending the message.
+ * @param request - target name, message text, and scheduling mode.
+ * @returns durable message identity and delivery observation, or a typed Team rejection.
+ */
+@Remote('sendMessage') async remoteSendMessage( agent: Agent, request: RemoteSendTeamMessageRequest, ): Promise<TeamMessageMutationResult>
+
+/**
+ * Interrupt one live teammate turn through the generated Remote API.
+ * @param agent - exact live Lead Agent authorizing the interrupt.
+ * @param targetName - durable teammate name.
+ * @returns the status sampled before cancellation, or a typed Team rejection.
+ */
+@Remote('interrupt') remoteInterrupt(agent: Agent, targetName: string): TeamInterruptMutationResult
+
+/**
+ * The Team's recorded history, newest first, through the generated Remote API.
+ *
+ * Every Team change is already a durable event in the Lead Session log, so
+ * this reads that log rather than keeping a second record: nothing here can
+ * disagree with what the Team actually did. Entries carry structured facts,
+ * not sentences, because the copy naming them is locale-owned by the surface.
+ * @param agent - exact live Team member reading the history.
+ * @param limit - newest entries to return, from one through two hundred.
+ * @returns the most recent entries, newest first.
+ */
+@Remote('activity') remoteActivity(agent: Agent, limit: number): TeamActivityEntry[]
+
+/**
+ * Wait for the next Team-domain or member-status change through the generated Remote API.
+ *
+ * A browser holds this call open and refetches {@link remoteView} whenever it
+ * resolves with a change. The wire carries no cancellation, so the bounded
+ * timeout is the only end of the wait: a browser that disconnects leaves one
+ * wait outstanding until it expires.
+ * @param agent - exact live Team member waiting for activity.
+ * @param timeoutMs - bounded wait duration from ten seconds through one hour.
+ * @returns one observed change or a timeout result.
+ */
+@Remote('waitForChange') async remoteWaitForChange(agent: Agent, timeoutMs: number): Promise<TeamWaitResult>
 ```
 
 Types: [Agent](core.md)

@@ -145,7 +145,8 @@ export class AuthorizationController extends TypertRemoteService {
    * The attempt outlives this call: a sign-in takes as long as a person takes,
    * and a request held open for that would time out on any transport. The page
    * follows it through {@link poll}.
-   * @param request - the credential key, and optionally which method to run.
+   * @param key - the credential the attempt authorizes.
+   * @param method - which sign-in method to run; the adapter's own choice when absent.
    * @returns the state the attempt starts in.
    */
   @Remote
@@ -209,7 +210,8 @@ export class AuthorizationController extends TypertRemoteService {
 
   /**
    * Answer the question the flow is waiting on.
-   * @param request - the credential key and the human's answer.
+   * @param key - the credential whose attempt is waiting.
+   * @param value - the human's answer to the question the flow asked.
    * @returns the state after the answer was delivered.
    */
   @Remote

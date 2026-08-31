@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
-  TeamTaskId, TeamTaskView as TeamTask, TeamView,
+  TeamActivityEntry, TeamTaskId, TeamTaskView as TeamTask, TeamView,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
@@ -113,6 +113,7 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
     // Default fixture never reports a change, so the follow loop parks on its
     // first wait instead of reloading underneath the assertions.
     waitForChange: () => new Promise(() => {}),
+    activity: () => Promise.resolve({ ok: true, value: [] }),
     openTeammate: () => Promise.resolve(),
     hooks: {
       colorScheme: { getSnapshot: () => 'dark', subscribe: () => () => {} },
@@ -1007,5 +1008,81 @@ describe('TeamAction', () => {
     dependency.resolve(taskSuccess({ ...task, revision: 3, subject: 'Late dependency' }))
     await Promise.resolve()
     expect(screen.queryByText('Late dependency')).toBeNull()
+  })
+
+  it('names every recorded state and leaves an unknown one raw', async () => {
+    const at = 1_700_000_000_000
+    const history: TeamActivityEntry[] = [
+      { seq: 12, time: at, kind: 'message-queued', subject: 'lead', target: 'writer' },
+      { seq: 11, time: at, kind: 'message-delivered', subject: 'lead', target: 'writer' },
+      { seq: 10, time: at, kind: 'member', subject: 'writer', state: 'provisioning' },
+      { seq: 9, time: at, kind: 'member', subject: 'writer', state: 'active' },
+      { seq: 8, time: at, kind: 'member', subject: 'ghost', state: 'failed' },
+      { seq: 7, time: at, kind: 'task', subject: 'Implement runtime', state: 'pending' },
+      { seq: 6, time: at, kind: 'task', subject: 'Implement runtime', state: 'in_progress' },
+      { seq: 5, time: at, kind: 'task', subject: 'Implement runtime', state: 'completed' },
+      { seq: 4, time: at, kind: 'task', subject: 'Implement runtime', state: 'deleted' },
+      { seq: 3, time: at, kind: 'member', subject: 'writer', state: 'someday' },
+    ]
+    const activity = vi.fn(() => Promise.resolve({ ok: true as const, value: history }))
+    render(<TeamAction {...props(actions({ activity }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+
+    await screen.findByText('Implement runtime')
+    const recorded = document.querySelector('[data-team-activity]')
+    if (recorded === null) throw new Error('the timeline did not render')
+    const rows = [...recorded.children]
+    // Every durable phase and status this Team can record has copy, and the
+    // rows keep the order the service returned, which is newest first.
+    expect(rows.map(row => row.lastElementChild?.textContent ?? '')).toEqual([
+      zh.activityQueued,
+      zh.activityDelivered,
+      zh['phase.provisioning'],
+      zh['phase.active'],
+      zh['phase.failed'],
+      zh['status.pending'],
+      zh['status.in_progress'],
+      zh['status.completed'],
+      zh['status.deleted'],
+      // A phase this build has no copy for still names its teammate.
+      'someday',
+    ])
+    expect(rows[0]?.textContent).toContain('lead → writer')
+    expect(rows[4]?.textContent).toContain('ghost')
+    expect(rows[5]?.textContent).toContain(zh.activityKindTask)
+    expect(activity).toHaveBeenCalledWith(SESSION, 40)
+  })
+
+  it('leaves the timeline empty until the Team records something', async () => {
+    render(<TeamAction {...props(actions())} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    expect(await screen.findByText(zh.activityEmpty)).toBeTruthy()
+    expect(document.querySelector('[data-team-activity]')).toBeNull()
+  })
+
+  it('keeps the board when the history is refused and drops history from a past session', async () => {
+    // A refused history leaves the board it accompanies alone: the roster and
+    // tasks loaded, so the timeline is the only part with nothing to show.
+    const refused = render(<TeamAction {...props(actions({ activity: () => Promise.resolve(remoteFailure('no history')) }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    expect(screen.getByText(zh.activityEmpty)).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    refused.unmount()
+
+    const late = Promise.withResolvers<TeamActionResult<TeamActivityEntry[]>>()
+    const activity = vi.fn()
+      .mockImplementationOnce(() => late.promise)
+      .mockResolvedValue({ ok: true, value: [] })
+    const injected = actions({ activity })
+    const rendered = render(<TeamAction {...props(injected)} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    rendered.rerender(<TeamAction {...props(injected, 'next-session' as SessionId)} />)
+    late.resolve({ ok: true, value: [{ seq: 1, time: 0, kind: 'task', subject: 'Stale entry', state: 'pending' }] })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(screen.queryByText('Stale entry')).toBeNull()
   })
 })

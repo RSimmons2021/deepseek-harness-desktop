@@ -42,7 +42,7 @@ The smallest addition to an existing composition is the two-package fragment fro
 
 The teammate providers are configured on the `agent-team` row instead. They are a Team-wide deployment choice, and the spawn tool reads the one the requested context mode resolves to through `ctx.agentTeams.providerFor`, so the model-facing tool and the browser Remote cannot disagree about what `fresh` and `fork` start.
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-experimental-tool-agent-team) is the exhaustive source for every accepted field and its JSDoc.
+This plugin accepts no configuration of its own; the generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-experimental-agent-team) is the exhaustive source for the fields the `agent-team` row accepts.
 
 Try it by asking the Lead model: "create a teammate named reviewer to check the diff, then send reviewer the change summary". The model calls the creation tool and then the messaging tool.
 

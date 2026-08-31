@@ -356,6 +356,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Lead and teammate rows in creation order.',
       },
       {
+        signature: 'providerFor(context: \'fresh\' | \'fork\'): string',
+        description: 'Resolve the continuable-subagent provider one context mode spawns through.\n\nThe provider is a deployment choice, so it has one home here beside the other Team limits: the model-facing tool and the browser Remote both read it rather than each carrying its own copy.',
+        parameters: [{ name: 'context', description: 'requested teammate context mode.' }],
+        returns: 'the configured provider name for that mode.',
+      },
+      {
         signature: 'async spawnTeammate(caller: Agent, request: SpawnTeammateRequest): Promise<SpawnTeammateResult>',
         description: 'Create one named, continuable direct child of the Team Lead.',
         parameters: [{ name: 'caller', description: 'exact live Lead Agent.' }, { name: 'request', description: 'immutable name, description, prompt, context mode, provider, and cancellation.' }],
@@ -426,6 +432,36 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Apply one task mutation and preserve Team rejections as business results.',
         parameters: [{ name: 'agent', description: 'exact live Team member authorizing the mutation.' }, { name: 'request', description: 'task identity, expected revision, action, and action fields.' }],
         returns: 'the committed task or a typed Team rejection.',
+      },
+      {
+        signature: '@Remote(\'spawnTeammate\') async remoteSpawnTeammate( agent: Agent, request: RemoteSpawnTeammateRequest, ): Promise<TeamSpawnMutationResult>',
+        description: 'Create one durable teammate through the generated Remote API.\n\nThe request carries no provider or cancellation: the service resolves the provider from the requested context mode, and the spawn runs to its durable active or failed edge rather than following a caller\'s signal.',
+        parameters: [{ name: 'agent', description: 'exact live Lead Agent creating the teammate.' }, { name: 'request', description: 'immutable name, description, opening prompt, and context mode.' }],
+        returns: 'the active roster row, or a typed Team rejection.',
+      },
+      {
+        signature: '@Remote(\'sendMessage\') async remoteSendMessage( agent: Agent, request: RemoteSendTeamMessageRequest, ): Promise<TeamMessageMutationResult>',
+        description: 'Queue one durable peer message through the generated Remote API.\n\nThe request carries no cancellation: the wire cannot hold an `AbortSignal`, and the enqueue is durable before delivery is attempted, so there is no pre-queue window for a browser to cancel.',
+        parameters: [{ name: 'agent', description: 'exact live Team member sending the message.' }, { name: 'request', description: 'target name, message text, and scheduling mode.' }],
+        returns: 'durable message identity and delivery observation, or a typed Team rejection.',
+      },
+      {
+        signature: '@Remote(\'interrupt\') remoteInterrupt(agent: Agent, targetName: string): TeamInterruptMutationResult',
+        description: 'Interrupt one live teammate turn through the generated Remote API.',
+        parameters: [{ name: 'agent', description: 'exact live Lead Agent authorizing the interrupt.' }, { name: 'targetName', description: 'durable teammate name.' }],
+        returns: 'the status sampled before cancellation, or a typed Team rejection.',
+      },
+      {
+        signature: '@Remote(\'activity\') remoteActivity(agent: Agent, limit: number): TeamActivityEntry[]',
+        description: 'The Team\'s recorded history, newest first, through the generated Remote API.\n\nEvery Team change is already a durable event in the Lead Session log, so this reads that log rather than keeping a second record: nothing here can disagree with what the Team actually did. Entries carry structured facts, not sentences, because the copy naming them is locale-owned by the surface.',
+        parameters: [{ name: 'agent', description: 'exact live Team member reading the history.' }, { name: 'limit', description: 'newest entries to return, from one through two hundred.' }],
+        returns: 'the most recent entries, newest first.',
+      },
+      {
+        signature: '@Remote(\'waitForChange\') async remoteWaitForChange(agent: Agent, timeoutMs: number): Promise<TeamWaitResult>',
+        description: 'Wait for the next Team-domain or member-status change through the generated Remote API.\n\nA browser holds this call open and refetches remoteView whenever it resolves with a change. The wire carries no cancellation, so the bounded timeout is the only end of the wait: a browser that disconnects leaves one wait outstanding until it expires.',
+        parameters: [{ name: 'agent', description: 'exact live Team member waiting for activity.' }, { name: 'timeoutMs', description: 'bounded wait duration from ten seconds through one hour.' }],
+        returns: 'one observed change or a timeout result.',
       },
     ],
   },
@@ -539,6 +575,43 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'request', description: 'the key, the method, the surface, and the cancel signal.' }],
         returns: '`authorized` once the flow\'s record is committed during this attempt and observed, or `cancelled` when the human declined or the caller withdrew.',
         throws: ['{AuthorizationError} code `NO_FLOW` when nothing claims the key, `UNKNOWN_METHOD` when the named method is not one the flow offers, `ALREADY_IN_FLIGHT` when an attempt is already running for the key, or `NOT_COMMITTED` when the flow resolved without committing a record during the attempt.'],
+      },
+    ],
+  },
+  {
+    key: 'authorizationController',
+    summary: 'Host service backing the generated `ctx.remote.authorization` namespace.',
+    description: 'Host service backing the generated `ctx.remote.authorization` namespace. Registered whether or not the authorization seam is mounted, so a page that asks without it gets an actionable refusal rather than a missing method.',
+    methods: [
+      {
+        signature: '@Remote list(): AuthorizationFlowView[]',
+        description: 'List the flows a page can offer to sign into.',
+        parameters: [],
+        returns: 'one row per registered flow, with the methods it accepts.',
+      },
+      {
+        signature: '@Remote begin(key: string, method?: string): AuthorizationStateView',
+        description: 'Start one attempt and return without waiting for the human.\n\nThe attempt outlives this call: a sign-in takes as long as a person takes, and a request held open for that would time out on any transport. The page follows it through poll.',
+        parameters: [{ name: 'key', description: 'the credential the attempt authorizes.' }, { name: 'method', description: 'which sign-in method to run; the adapter\'s own choice when absent.' }],
+        returns: 'the state the attempt starts in.',
+      },
+      {
+        signature: '@Remote poll(key: string): AuthorizationStateView',
+        description: 'Read the attempt\'s newest state.',
+        parameters: [{ name: 'key', description: 'the credential record whose attempt to report on.' }],
+        returns: 'the phase, the newest notice, and any question awaiting an answer.',
+      },
+      {
+        signature: '@Remote answer(key: string, value: string): AuthorizationStateView',
+        description: 'Answer the question the flow is waiting on.',
+        parameters: [{ name: 'key', description: 'the credential whose attempt is waiting.' }, { name: 'value', description: 'the human\'s answer to the question the flow asked.' }],
+        returns: 'the state after the answer was delivered.',
+      },
+      {
+        signature: '@Remote cancel(key: string): AuthorizationStateView',
+        description: 'Withdraw the attempt, which the flow reports as a cancellation.',
+        parameters: [{ name: 'key', description: 'the credential record whose attempt to withdraw.' }],
+        returns: 'the state after the withdrawal was requested.',
       },
     ],
   },
@@ -3520,11 +3593,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AuthorizationEntry',
-    declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
+    declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    subscription: boolean;\n    inFlight: boolean;\n}',
   },
   {
     name: 'AuthorizationFlow',
-    declaration: 'export interface AuthorizationFlow {\n    readonly key: CredentialKey;\n    readonly label: string;\n    readonly methods: readonly [\n        AuthorizationMethod,\n        ...AuthorizationMethod[]\n    ];\n    run(session: AuthorizationSession): Promise<void>;\n}',
+    declaration: 'export interface AuthorizationFlow {\n    readonly key: CredentialKey;\n    readonly label: string;\n    readonly methods: readonly [\n        AuthorizationMethod,\n        ...AuthorizationMethod[]\n    ];\n    readonly subscription?: boolean;\n    run(session: AuthorizationSession): Promise<void>;\n}',
+  },
+  {
+    name: 'AuthorizationFlowView',
+    declaration: 'export interface AuthorizationFlowView {\n    key: string;\n    label: string;\n    methods: AuthorizationMethodView[];\n    subscription: boolean;\n    inFlight: boolean;\n}',
   },
   {
     name: 'AuthorizationInteraction',
@@ -3535,6 +3612,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AuthorizationMethod {\n    id: string;\n    label: string;\n}',
   },
   {
+    name: 'AuthorizationMethodView',
+    declaration: 'export interface AuthorizationMethodView {\n    id: string;\n    label: string;\n}',
+  },
+  {
     name: 'AuthorizationNotice',
     declaration: 'export interface AuthorizationNotice {\n    message: string;\n    url?: string;\n    code?: string;\n}',
   },
@@ -3543,12 +3624,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AuthorizationOutcome {\n    status: AuthorizationStatus;\n}',
   },
   {
+    name: 'AuthorizationPhase',
+    declaration: 'export type AuthorizationPhase = \'idle\' | \'running\' | \'authorized\' | \'cancelled\' | \'failed\';',
+  },
+  {
     name: 'AuthorizationPrompt',
     declaration: 'export type AuthorizationPrompt = {\n    signal?: AbortSignal;\n} & ({\n    kind: \'text\';\n    message: string;\n    placeholder?: string;\n} | {\n    kind: \'secret\';\n    message: string;\n    placeholder?: string;\n} | {\n    kind: \'select\';\n    message: string;\n    options: readonly AuthorizationPromptOption[];\n});',
   },
   {
     name: 'AuthorizationPromptOption',
     declaration: 'export interface AuthorizationPromptOption {\n    id: string;\n    label: string;\n    description?: string;\n}',
+  },
+  {
+    name: 'AuthorizationQuestion',
+    declaration: 'export interface AuthorizationQuestion {\n    kind: \'text\' | \'secret\' | \'select\';\n    message: string;\n    placeholder?: string;\n    options?: AuthorizationQuestionOption[];\n}',
+  },
+  {
+    name: 'AuthorizationQuestionOption',
+    declaration: 'export interface AuthorizationQuestionOption {\n    id: string;\n    label: string;\n    description?: string;\n}',
   },
   {
     name: 'AuthorizationRequest',
@@ -3561,6 +3654,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AuthorizationSettlement',
     declaration: 'export type AuthorizationSettlement = AuthorizationStatus | \'failed\';',
+  },
+  {
+    name: 'AuthorizationStateView',
+    declaration: 'export interface AuthorizationStateView {\n    key: string;\n    phase: AuthorizationPhase;\n    notice?: {\n        message: string;\n        url?: string;\n        code?: string;\n    };\n    question?: AuthorizationQuestion;\n    error?: string;\n}',
   },
   {
     name: 'AuthorizationStatus',
@@ -4607,6 +4704,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface RemoteEventHostInfo {\n    readonly home: string;\n}',
   },
   {
+    name: 'RemoteSendTeamMessageRequest',
+    declaration: 'export interface RemoteSendTeamMessageRequest {\n    readonly target: string;\n    readonly message: string;\n    readonly delivery: \'quiet\' | \'wakeup\';\n}',
+  },
+  {
+    name: 'RemoteSpawnTeammateRequest',
+    declaration: 'export interface RemoteSpawnTeammateRequest {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: string;\n    readonly context: \'fresh\' | \'fork\';\n}',
+  },
+  {
     name: 'ReplayEnvelope',
     declaration: 'export interface ReplayEnvelope {\n    response: unknown;\n    blocks?: readonly unknown[];\n}',
   },
@@ -5523,8 +5628,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
+    name: 'TeamActivityEntry',
+    declaration: 'export interface TeamActivityEntry {\n    readonly seq: number;\n    readonly time: number;\n    readonly kind: TeamActivityKind;\n    readonly subject: string;\n    readonly state?: string;\n    readonly target?: string;\n}',
+  },
+  {
+    name: 'TeamActivityKind',
+    declaration: 'export type TeamActivityKind = \'member\' | \'task\' | \'message-queued\' | \'message-delivered\';',
+  },
+  {
     name: 'TeamId',
     declaration: 'export type TeamId = Branded<\'TeamId\'>;',
+  },
+  {
+    name: 'TeamInterruptMutationResult',
+    declaration: 'export type TeamInterruptMutationResult = {\n    readonly ok: true;\n    readonly value: TeamInterruptView;\n} | {\n    readonly ok: false;\n    readonly error: {\n        readonly code: \'team-rejected\';\n        readonly message: string;\n    };\n};',
+  },
+  {
+    name: 'TeamInterruptView',
+    declaration: 'export interface TeamInterruptView {\n    readonly previousStatus: \'running\' | \'idle\' | \'inactive\';\n}',
   },
   {
     name: 'TeamMembership',
@@ -5537,6 +5658,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TeamMessageId',
     declaration: 'export type TeamMessageId = Branded<\'TeamMessageId\'>;',
+  },
+  {
+    name: 'TeamMessageMutationResult',
+    declaration: 'export type TeamMessageMutationResult = {\n    readonly ok: true;\n    readonly value: SendTeamMessageResult;\n} | {\n    readonly ok: false;\n    readonly error: {\n        readonly code: \'team-rejected\';\n        readonly message: string;\n    };\n};',
+  },
+  {
+    name: 'TeamSpawnMutationResult',
+    declaration: 'export type TeamSpawnMutationResult = {\n    readonly ok: true;\n    readonly value: SpawnTeammateResult;\n} | {\n    readonly ok: false;\n    readonly error: {\n        readonly code: \'team-rejected\';\n        readonly message: string;\n    };\n};',
   },
   {
     name: 'TeamTaskAction',
@@ -5560,7 +5689,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TeamView',
-    declaration: 'export interface TeamView {\n    readonly members: TeamMemberView[];\n    readonly tasks: TeamTaskView[];\n}',
+    declaration: 'export interface TeamView {\n    readonly members: TeamMemberView[];\n    readonly tasks: TeamTaskView[];\n    readonly capacity: number;\n}',
   },
   {
     name: 'TeamWaitResult',

@@ -282,6 +282,31 @@ export type TeamInterruptMutationResult =
     }
   }
 
+/** What one recorded Team change was, for a surface rendering a timeline. */
+export type TeamActivityKind = 'member' | 'task' | 'message-queued' | 'message-delivered'
+
+/**
+ * One entry of the Team's recorded history.
+ *
+ * Structured facts rather than a sentence: the copy naming what happened is
+ * locale-owned by whichever surface renders it, so this carries the subject and
+ * the state it reached and nothing pre-composed.
+ */
+export interface TeamActivityEntry {
+  /** Monotonic sequence in the Lead Session log; stable across reads. */
+  readonly seq: number
+  /** Unix epoch milliseconds the change was recorded. */
+  readonly time: number
+  /** Which kind of change this was. */
+  readonly kind: TeamActivityKind
+  /** Member name, task subject, or sending member, by kind. */
+  readonly subject: string
+  /** Member phase or task status; absent for the message kinds. */
+  readonly state?: string
+  /** Receiving member; present only for the message kinds. */
+  readonly target?: string
+}
+
 /** Result of waiting for Team activity. */
 export interface TeamWaitResult {
   readonly timedOut: boolean

@@ -24,6 +24,7 @@ import type {
   TeamMemberView,
   RemoteSendTeamMessageRequest,
   RemoteSpawnTeammateRequest,
+  TeamActivityEntry,
   TeamInterruptMutationResult,
   TeamMessageMutationResult,
   TeamSpawnMutationResult,
@@ -38,7 +39,8 @@ export type * from './types.ts'
 export type { TeamMembership } from './roster.ts'
 export { TeamId, TeamMessageId, TeamTaskId } from './types.ts'
 export { TeamError } from './error.ts'
-export { foldTeam } from './fold.ts'
+import { activityOf } from './fold.ts'
+export { activityOf, foldTeam } from './fold.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -51,6 +53,7 @@ const DEFAULT_MAX_TASKS = 256
 const DEFAULT_MAX_PENDING_MESSAGES = 64
 const DEFAULT_MAX_MESSAGE_BYTES = 65_536
 const DEFAULT_DISPOSAL_TIMEOUT_MS = 5_000
+const MAX_ACTIVITY_ENTRIES = 200
 const DEFAULT_FRESH_PROVIDER = 'spawn'
 const DEFAULT_FORK_PROVIDER = 'fork'
 
@@ -363,6 +366,35 @@ export class TeamService extends TypertRemoteService {
       if (!(error instanceof TeamError)) throw error
       return { ok: false, error: { code: 'team-rejected', message: error.message } }
     }
+  }
+
+  /**
+   * The Team's recorded history, newest first, through the generated Remote API.
+   *
+   * Every Team change is already a durable event in the Lead Session log, so
+   * this reads that log rather than keeping a second record: nothing here can
+   * disagree with what the Team actually did. Entries carry structured facts,
+   * not sentences, because the copy naming them is locale-owned by the surface.
+   * @param agent - exact live Team member reading the history.
+   * @param limit - newest entries to return, from one through two hundred.
+   * @returns the most recent entries, newest first.
+   */
+  @Remote('activity')
+  remoteActivity(agent: Agent, limit: number): TeamActivityEntry[] {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_ACTIVITY_ENTRIES) {
+      throw new TeamError(
+        `limit must be an integer from 1 through ${String(MAX_ACTIVITY_ENTRIES)}`,
+        'TEAM_INVALID_LIMIT',
+      )
+    }
+    const membership = this.roster.membership(agent)
+    const state = this.journal.state(membership.root)
+    const entries: TeamActivityEntry[] = []
+    for (const event of membership.root.session.events) {
+      const entry = activityOf(event, state)
+      if (entry !== undefined) entries.push(entry)
+    }
+    return entries.reverse().slice(0, limit)
   }
 
   /**
