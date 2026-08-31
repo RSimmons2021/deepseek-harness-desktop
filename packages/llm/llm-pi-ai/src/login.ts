@@ -139,6 +139,8 @@ export function registerPiAiFlows(ctx: Context, auth: PiAiAuthInjection): void {
       key: recordKeyFor(providerId),
       label: provider.name,
       methods: [first, ...rest],
+      // pi-ai marks the grants that spend a plan someone already holds.
+      subscription: provider.auth.oauth?.isSubscription ?? false,
       async run(session) {
         // A collection of its own, holding only the provider being signed
         // into: login is not serving requests, and the credential it produces

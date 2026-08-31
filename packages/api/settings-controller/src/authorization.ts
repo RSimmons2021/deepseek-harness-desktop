@@ -134,6 +134,7 @@ export class AuthorizationController extends TypertRemoteService {
       key: String(entry.key),
       label: entry.label,
       methods: entry.methods.map(method => ({ id: method.id, label: method.label })),
+      subscription: entry.subscription,
       inFlight: entry.inFlight,
     }))
   }

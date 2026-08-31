@@ -74,6 +74,8 @@ export interface AuthorizationFlowView {
   label: string
   /** Methods this flow accepts, most preferred first. */
   methods: AuthorizationMethodView[]
+  /** Whether signing in here spends a subscription rather than issuing a key. */
+  subscription: boolean
   /** Whether an attempt for this key is already running. */
   inFlight: boolean
 }

@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 `dsh-client-ui-settings-models` is the Models settings page of the dsh web client: users configure API keys (stored write-only under the profile's credential reference), edit each provider's model list, and hand-declare custom pi-ai routes, with provider rows and one editor card at a time. The page joins the provider directory, the settings document, and the credential descriptions into one shared snapshot, so a row's state stays consistent across all three. It also walks first-run users through two ordered dialogs — a versioned internal-testing notice and the conditional official-DeepSeek credential step.
 
+The Models page also lists the providers that ship an interactive login. Subscription grants lead the list, because the rest of the catalog offers a login too and an unsorted list buries the plans a person already holds. A running attempt renders inside the row it was started from: the flow's first question is usually which login method to run, and a catalog this long put that question far below the fold, where a sign-in looked like it had simply stalled.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

@@ -66,6 +66,7 @@ describe('AuthorizationService registry', () => {
       key: KEY,
       label: 'ChatGPT (Codex)',
       methods: [{ id: 'oauth', label: 'Sign in with ChatGPT' }, { id: 'api-key', label: 'Paste a key' }],
+      subscription: false,
       inFlight: false,
     }])
     expect(ctx.authorization.describe(KEY)?.label).toBe('ChatGPT (Codex)')

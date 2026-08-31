@@ -128,6 +128,12 @@ export interface AuthorizationFlow {
    */
   readonly methods: readonly [AuthorizationMethod, ...AuthorizationMethod[]]
   /**
+   * Whether this flow signs into a subscription rather than issuing a developer
+   * credential. Defaults to false, which is what an ordinary key-issuing flow
+   * is.
+   */
+  readonly subscription?: boolean
+  /**
    * Run one attempt to obtain and commit the credential.
    * @param session - the chosen method, the cancellation signal, and the interaction callbacks.
    * @returns once the record is committed.
@@ -241,6 +247,7 @@ export class AuthorizationService extends Service {
       key: flow.key,
       label: flow.label,
       methods: flow.methods,
+      subscription: flow.subscription ?? false,
       inFlight: this.running.has(flow.key),
     }
   }

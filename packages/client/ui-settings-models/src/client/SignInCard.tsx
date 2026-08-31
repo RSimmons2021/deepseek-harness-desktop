@@ -100,6 +100,78 @@ export function SignInCard({ api, t, readOnly }: SignInCardProps) {
 
   if (flows === null || (flows.length === 0 && listError === null)) return null
 
+  // Subscription grants lead: they spend a plan someone already holds, and the
+  // rest of the catalog ships a login too, so an unsorted list buries them.
+  const ordered = [...flows].sort((left, right) => {
+    if (left.subscription !== right.subscription) return left.subscription ? -1 : 1
+    return left.label.localeCompare(right.label)
+  })
+
+  /** The attempt block for the row that owns it, so it appears where it was started. */
+  const attemptFor = (key: string) => {
+    if (state === null || state.key !== key || state.phase === 'idle') return null
+    return (
+      <div className={css.attempt} role="status">
+        {state.notice !== undefined && (
+          <p className={css.notice}>
+            {state.notice.message}
+            {state.notice.url !== undefined && (
+              <a className={css.link} href={state.notice.url} target="_blank" rel="noreferrer">
+                {t('signInOpen')}
+              </a>
+            )}
+            {state.notice.code !== undefined && <code className={css.code}>{state.notice.code}</code>}
+          </p>
+        )}
+
+        {state.question !== undefined && state.question.kind === 'select' && (
+          <div className={css.answerRow}>
+            {(state.question.options ?? []).map(option => (
+              <button
+                key={option.id}
+                type="button"
+                className={css.action}
+                onClick={() => {
+                  void api.answer(state.key, option.id).then((result) => {
+                    if (result.ok) setState(result.value)
+                  })
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {state.question !== undefined && state.question.kind !== 'select' && (
+          <div className={css.answerRow}>
+            <input
+              type={state.question.kind === 'secret' ? 'password' : 'text'}
+              value={answer}
+              placeholder={state.question.placeholder ?? state.question.message}
+              aria-label={state.question.message}
+              onChange={(event) => { setAnswer(event.target.value) }}
+            />
+            <button type="button" className={css.action} onClick={() => { void submit() }}>
+              {t('signInAnswer')}
+            </button>
+          </div>
+        )}
+
+        {state.phase === 'running' && (
+          <button type="button" className={css.action} onClick={() => { void stop() }}>
+            {t('signInCancel')}
+          </button>
+        )}
+        {state.phase === 'authorized' && <p className={css.done}>{t('signInAuthorized')}</p>}
+        {state.phase === 'cancelled' && <p className={css.done}>{t('signInCancelled')}</p>}
+        {state.phase === 'failed' && (
+          <p className={css.failed}>{t('signInFailed')}{state.error === undefined ? '' : `: ${state.error}`}</p>
+        )}
+      </div>
+    )
+  }
+
   return (
     <section className={css.card} aria-labelledby="models-signin-heading">
       <h3 id="models-signin-heading" className={css.title}>{t('signInTitle')}</h3>
@@ -108,84 +180,26 @@ export function SignInCard({ api, t, readOnly }: SignInCardProps) {
       {listError === null && flows.length === 0 && <p className={css.description}>{t('signInNone')}</p>}
 
       <ul className={css.flows}>
-        {flows.map((flow) => {
+        {ordered.map((flow) => {
           const running = state?.key === flow.key && state.phase === 'running'
           return (
-            <li key={flow.key} className={css.flow}>
-              <span className={css.flowLabel}>{flow.label}</span>
-              <button
-                type="button"
-                className={css.action}
-                disabled={readOnly || running || flow.inFlight}
-                onClick={() => { void start(flow) }}
-              >
-                {running || flow.inFlight ? t('signInBusy') : t('signIn')}
-              </button>
+            <li key={flow.key} className={css.flow} data-subscription={flow.subscription || undefined}>
+              <div className={css.flowRow}>
+                <span className={css.flowLabel}>{flow.label}</span>
+                <button
+                  type="button"
+                  className={css.action}
+                  disabled={readOnly || running || flow.inFlight}
+                  onClick={() => { void start(flow) }}
+                >
+                  {running || flow.inFlight ? t('signInBusy') : t('signIn')}
+                </button>
+              </div>
+              {attemptFor(flow.key)}
             </li>
           )
         })}
       </ul>
-
-      {state !== null && state.phase !== 'idle' && (
-        <div className={css.attempt} role="status">
-          {state.notice !== undefined && (
-            <p className={css.notice}>
-              {state.notice.message}
-              {state.notice.url !== undefined && (
-                <a className={css.link} href={state.notice.url} target="_blank" rel="noreferrer">
-                  {t('signInOpen')}
-                </a>
-              )}
-              {state.notice.code !== undefined && <code className={css.code}>{state.notice.code}</code>}
-            </p>
-          )}
-
-          {state.question !== undefined && state.question.kind === 'select' && (
-            <div className={css.answerRow}>
-              {(state.question.options ?? []).map(option => (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={css.action}
-                  onClick={() => {
-                    void api.answer(state.key, option.id).then((result) => {
-                      if (result.ok) setState(result.value)
-                    })
-                  }}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {state.question !== undefined && state.question.kind !== 'select' && (
-            <div className={css.answerRow}>
-              <input
-                type={state.question.kind === 'secret' ? 'password' : 'text'}
-                value={answer}
-                placeholder={state.question.placeholder ?? state.question.message}
-                aria-label={state.question.message}
-                onChange={(event) => { setAnswer(event.target.value) }}
-              />
-              <button type="button" className={css.action} onClick={() => { void submit() }}>
-                {t('signInAnswer')}
-              </button>
-            </div>
-          )}
-
-          {state.phase === 'running' && (
-            <button type="button" className={css.action} onClick={() => { void stop() }}>
-              {t('signInCancel')}
-            </button>
-          )}
-          {state.phase === 'authorized' && <p className={css.done}>{t('signInAuthorized')}</p>}
-          {state.phase === 'cancelled' && <p className={css.done}>{t('signInCancelled')}</p>}
-          {state.phase === 'failed' && (
-            <p className={css.failed}>{t('signInFailed')}{state.error === undefined ? '' : `: ${state.error}`}</p>
-          )}
-        </div>
-      )}
     </section>
   )
 }

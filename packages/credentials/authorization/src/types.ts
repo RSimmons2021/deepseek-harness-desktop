@@ -86,6 +86,12 @@ export interface AuthorizationEntry {
   label: string
   /** The methods this flow offers, most preferred first. */
   methods: readonly AuthorizationMethod[]
+  /**
+   * Whether signing in here spends an existing subscription rather than
+   * issuing a developer credential. A surface offering many flows leads with
+   * these, because they are the ones a person already pays for.
+   */
+  subscription: boolean
   /** Whether an attempt for this key is running right now. */
   inFlight: boolean
 }

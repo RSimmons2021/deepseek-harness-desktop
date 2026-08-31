@@ -37,9 +37,22 @@
 
 .flow {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.flowRow {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+/* Subscription grants lead the list and carry the accent, so the plans someone
+   already holds are separable from the rest of the catalog at a glance. */
+.flow[data-subscription] .flowLabel {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
 }
 
 .flowLabel {
