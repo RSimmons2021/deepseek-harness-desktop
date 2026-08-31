@@ -18,6 +18,7 @@ import { Button, IconPlusOutline16, Modal } from '@deepseek-ai/dsh-client-ui-pri
 import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls this package's SlotMap merge (the two Models child slots).
 import type {} from './slot-contract.ts'
+import type { JsonValue } from '@deepseek-ai/dsh-api-remotes/client'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
 import { SignInCard } from './SignInCard.tsx'
 import { deriveKeyRef, messageOf, protocolChoices, providerUsable } from './store.ts'
@@ -283,7 +284,19 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
     }
     const revision = state.namespaces.get('llm-pi-ai')?.revision
     if (revision === undefined) return
-    await api.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', route], value: {} }], revision)
+    // A route that declares no models registers and serves, but the selector
+    // shows nothing for it — the catalog is whatever the settings document
+    // says. Declare what the adapter can discover so the models appear; a
+    // provider that answers nothing still gets its route, and its models can be
+    // fetched or typed in the editor.
+    const discovered = await api.llm.discoverModels('llm-pi-ai', { provider: route })
+    const models = discovered.ok ? discovered.value.map(model => ({ id: model.id })) : []
+    const profile = models.length === 0 ? {} : { models }
+    await api.settings.mutate(
+      'llm-pi-ai',
+      [{ op: 'set', path: ['providers', route], value: profile as JsonValue }],
+      revision,
+    )
     await controller.load()
   }
 
