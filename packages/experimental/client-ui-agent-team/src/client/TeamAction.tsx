@@ -1213,22 +1213,30 @@ function MemberTail({ lines, t }: MemberTailProps) {
   return (
     <>
       <span className={css.detailLabel}>{t('tailLabel')}</span>
-      {lines.length === 0 && <span className={css.detailValue}>{t('tailEmpty')}</span>}
-      {lines.length > 0 && (
-        <ol className={css.tail} data-team-tail>
-          {lines.map(line => (
-            <li key={line.seq} className={css.tailLine}>
-              <span className={css.tailKind}>
-                {t(tailKindKey(line.kind), line.name === undefined ? {} : { name: line.name })}
-              </span>
-              <span className={css.tailText}>
-                {line.text}
-                {line.truncated === true && <em>{t('tailTruncated')}</em>}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
+      {/*
+        A fixed window rather than a box that grows to its content: the lines
+        arrive from their own read after the card has already opened, and a
+        region that resized then would shove the member's name up the card
+        every time a teammate recorded something.
+      */}
+      <div className={css.tailWindow}>
+        {lines.length === 0 && <span className={css.detailValue}>{t('tailEmpty')}</span>}
+        {lines.length > 0 && (
+          <ol className={css.tail} data-team-tail>
+            {lines.map(line => (
+              <li key={line.seq} className={css.tailLine}>
+                <span className={css.tailKind}>
+                  {t(tailKindKey(line.kind), line.name === undefined ? {} : { name: line.name })}
+                </span>
+                <span className={css.tailText}>
+                  {line.text}
+                  {line.truncated === true && <em>{t('tailTruncated')}</em>}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
     </>
   )
 }

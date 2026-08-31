@@ -1290,11 +1290,23 @@
  * scroll: a card is a summary, and the member's whole conversation is one
  * navigation away.
  */
+/*
+ * The tail's own viewport. Its height does not depend on how many lines have
+ * arrived, so a card that is already open never resizes when a teammate
+ * records something — the lines scroll inside the window instead of shoving
+ * the member's name up the card.
+ */
+.tailWindow {
+  height: 118px;
+  margin-top: 2px;
+  overflow: hidden;
+}
+
 .tail {
   display: flex;
-  max-height: 132px;
+  max-height: 100%;
   flex-direction: column;
-  margin: 2px 0 0;
+  margin: 0;
   padding: 0;
   overflow-y: auto;
   gap: 4px;
