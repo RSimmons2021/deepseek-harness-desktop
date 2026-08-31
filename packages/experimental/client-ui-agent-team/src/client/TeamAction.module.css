@@ -488,12 +488,18 @@
 }
 
 .memberTopline {
-  /* Wrap before clipping: at desktop column widths the role label and the
-     status do not fit on one line, and the card's overflow cut the label mid
-     word rather than showing it. */
-  flex-wrap: wrap;
-  justify-content: space-between;
-  row-gap: 4px;
+  /*
+   * Two rows at every width, never one. Wrapping avoided clipping the role
+   * label, but it also meant the status jumped from beside the label to below
+   * it partway through the card's own width animation — a reflow no
+   * transition can carry, so the card landed with a snap at the end of an
+   * otherwise smooth collapse.
+   */
+  display: grid;
+  align-items: start;
+  gap: 4px;
+  grid-template-rows: auto auto;
+  justify-items: start;
 }
 
 .memberState {
