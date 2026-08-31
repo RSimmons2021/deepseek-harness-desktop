@@ -10,6 +10,7 @@ export type {
   TeamActivityKind,
   TeamInterruptMutationResult,
   TeamInterruptView,
+  TeamMemberEffort,
   TeamMemberView,
   TeamMessageMutationResult,
   TeamSpawnMutationResult,

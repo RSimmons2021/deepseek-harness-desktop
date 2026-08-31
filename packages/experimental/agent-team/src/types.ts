@@ -54,6 +54,31 @@ export interface TeamMemberSnapshot {
   readonly error?: string
 }
 
+/**
+ * What one member has spent so far.
+ *
+ * Read from that member's Session projections, which their owning plugins
+ * already maintain, rather than folded here: no log read, and nothing that can
+ * disagree with what the Session recorded. Reported only for a member whose
+ * Session is attached — a composition without the projection plugins, or a
+ * member that is not attached, reports no effort at all rather than a zero
+ * that would read as "did nothing".
+ */
+export interface TeamMemberEffort {
+  /** Turns carrying at least one closed step. */
+  readonly turns: number
+  /** Model wall time in milliseconds, over steps that assembled a message. */
+  readonly modelMs: number
+  /** Tool wall time in milliseconds, over matched call and result pairs. */
+  readonly toolMs: number
+  /** Provider input tokens that its cache did not serve. */
+  readonly inputTokens: number
+  /** Provider output tokens. */
+  readonly outputTokens: number
+  /** Provider input tokens served from its cache. */
+  readonly cacheReadTokens: number
+}
+
 /** Current runtime-enriched roster row. */
 export interface TeamMemberView {
   readonly id: SessionId
@@ -64,6 +89,7 @@ export interface TeamMemberView {
   readonly provider?: string
   readonly context?: 'fresh' | 'fork'
   readonly model?: string
+  readonly effort?: TeamMemberEffort
   readonly diagnostics: string[]
 }
 

@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 检查并导航 roster
 
-打开 workspace 会调用 `agentTeams/view`。Roster card 展示持久 name、运行时 status、model、diagnostics 与当前 task ownership。Pointer hover 或键盘 focus 通过 shared-layout motion 展开一个 card，同时让相邻 card 保持空间连续性；touch input 不合成 hover，reduced-motion 偏好会移除空间动画。空余容量显示为不可交互的开放席位，不会伪造 Team member。选择健康 teammate 时，系统刷新既有直接 child catalog，并打开普通的 `{ parentSessionId, childSessionId, mode: 'continuable' }` address。History 与后续人类 prompt 继续使用稳定 addressed-subagent 会话路径；本包不会添加 Team 专用 address 字段。
+打开 workspace 会调用 `agentTeams/view`。Roster card 展示持久 name、运行时 status、model、diagnostics 与当前 task ownership。Pointer hover 或键盘 focus 通过 shared-layout motion 展开一个 card，同时让相邻 card 保持空间连续性；touch input 不合成 hover，reduced-motion 偏好会移除空间动画。空余容量显示为不可交互的开放席位，不会伪造 Team member。展开的 card 还会在 roster 报告时说明该成员的投入 —— 轮次、模型与工具时间，以及输入、输出与缓存命中 token；只有当 provider 确实提供了缓存命中时才显示该项，因为此处的 0 与「没有缓存」是不同的事实。选择健康 teammate 时，系统刷新既有直接 child catalog，并打开普通的 `{ parentSessionId, childSessionId, mode: 'continuable' }` address。History 与后续人类 prompt 继续使用稳定 addressed-subagent 会话路径；本包不会添加 Team 专用 address 字段。
 
 ### 管理任务板
 

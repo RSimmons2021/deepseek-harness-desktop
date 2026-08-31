@@ -5,6 +5,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import type { Session } from '@deepseek-ai/dsh-session'
+// Named rather than bindingless: the import carries the `sessionStats` and
+// `tokenUsage` projection-key merges these reads depend on, and a type import
+// with no bindings is elided before some type services resolve it.
+import type { SessionStatsProjection } from '@deepseek-ai/dsh-session-stats/types'
+import type { TokenUsageProjection } from '@deepseek-ai/dsh-token-meter'
 import { foldSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
 import type { ContinuableStart } from '@deepseek-ai/dsh-subagent'
 import { errorMessage, TeamError } from './error.ts'
@@ -17,6 +23,7 @@ import type {
   SpawnTeammateRequest,
   SpawnTeammateResult,
   TeamMemberSnapshot,
+  TeamMemberEffort,
   TeamMemberView,
 } from './types.ts'
 import { requiredText } from './validation.ts'
@@ -128,17 +135,20 @@ export class TeamRoster {
   list(membership: TeamMembership): TeamMemberView[] {
     const { root } = membership
     const state = this.journal.state(root)
+    const leadEffort = this.effortOf(root.session)
     const result: TeamMemberView[] = [{
       id: root.id,
       name: 'lead',
       role: 'lead',
       status: root.status,
       ...root.options.model === undefined ? {} : { model: root.options.model },
+      ...leadEffort === undefined ? {} : { effort: leadEffort },
       diagnostics: [],
     }]
     for (const member of state.members.values()) {
       const live = this.ctx.agents.get(member.id)
       const model = live?.options.model ?? root.options.model
+      const effort = live === undefined ? undefined : this.effortOf(live.session)
       result.push({
         id: member.id,
         name: member.name,
@@ -152,6 +162,7 @@ export class TeamRoster {
         provider: member.provider,
         context: member.context,
         ...model === undefined ? {} : { model },
+        ...effort === undefined ? {} : { effort },
         diagnostics: member.error === undefined ? [] : [member.error],
       })
     }
@@ -427,6 +438,30 @@ export class TeamRoster {
           member: settled,
         })
       })
+    }
+  }
+
+  /**
+   * Read what one attached Session has spent from its own projections.
+   *
+   * The two units are maintained by `session-stats` and `token-meter`; a
+   * composition mounting neither reports nothing, and one mounting only one
+   * reports that half against zeros for the other, because a member that has
+   * run has genuinely spent zero of what nobody is counting.
+   */
+  private effortOf(session: Session): TeamMemberEffort | undefined {
+    const projections = this.ctx.get('sessionProjections')
+    if (projections === undefined) return undefined
+    const stats: SessionStatsProjection | undefined = projections.stateOf(session, 'sessionStats')
+    const usage: TokenUsageProjection | undefined = projections.stateOf(session, 'tokenUsage')
+    if (stats === undefined && usage === undefined) return undefined
+    return {
+      turns: stats?.turns ?? 0,
+      modelMs: stats?.llmMs ?? 0,
+      toolMs: stats?.toolMs ?? 0,
+      inputTokens: usage?.uncachedInputTokens ?? 0,
+      outputTokens: usage?.outputTokens ?? 0,
+      cacheReadTokens: usage?.cacheReadTokens ?? 0,
     }
   }
 

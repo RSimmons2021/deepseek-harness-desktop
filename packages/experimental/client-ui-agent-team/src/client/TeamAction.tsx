@@ -8,6 +8,7 @@ import type {
   RemoteSpawnTeammateRequest,
   TeamActivityEntry,
   TeamActivityKind,
+  TeamMemberEffort,
   TeamMemberView as TeamRosterMember,
   TeamMessageMutationResult,
   TeamSpawnMutationResult,
@@ -177,6 +178,27 @@ function statusKey(status: TeamTask['status']): TeamKey {
     /* v8 ignore next -- Team views omit deleted task tombstones. */
     case 'deleted': return 'status.completed'
   }
+}
+
+/**
+ * Round a duration to the largest unit that still reads as a measurement. The
+ * unit names come from the dictionary, so a locale that writes them as words
+ * is not forced through an English abbreviation.
+ */
+function formatDuration(ms: number, t: TeamSurfaceProps['t']): string {
+  if (ms < 1000) return t('unitMs', { value: Math.round(ms) })
+  if (ms < 60_000) return t('unitSeconds', { value: (ms / 1000).toFixed(1) })
+  return t('unitMinutes', {
+    minutes: Math.floor(ms / 60_000),
+    seconds: Math.round((ms % 60_000) / 1000),
+  })
+}
+
+/** Abbreviate a token count; a roster tile has no room for seven digits. */
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return String(tokens)
+  if (tokens < 1_000_000) return `${(tokens / 1000).toFixed(1)}K`
+  return `${(tokens / 1_000_000).toFixed(1)}M`
 }
 
 /** Copy key naming which kind of change one recorded entry was. */
@@ -817,6 +839,9 @@ export function TeamAction({
                                     <span className={css.detailValue}>
                                       {assigned.length === 0 ? t('noAssignedTasks') : assigned.map(task => task.subject).join(' · ')}
                                     </span>
+                                    {member.effort !== undefined && (
+                                      <MemberEffort effort={member.effort} t={t} />
+                                    )}
                                   </motion.span>
                                 )}
                               </AnimatePresence>
@@ -1059,6 +1084,38 @@ export function TeamAction({
         </motion.div>
       )}
     </div>
+  )
+}
+
+interface MemberEffortProps {
+  effort: TeamMemberEffort
+  t: TeamSurfaceProps['t']
+}
+
+/**
+ * What one member has spent. Cached input is named only when the provider
+ * served some: a zero there is not the same fact as "no cache", and a roster
+ * tile that always shows it teaches nothing.
+ */
+function MemberEffort({ effort, t }: MemberEffortProps) {
+  return (
+    <>
+      <span className={css.detailLabel}>{t('effortLabel')}</span>
+      <span className={css.detailValue} data-team-effort>
+        {t('effortTurns', { turns: effort.turns })}
+        {' · '}
+        {t('effortTime', {
+          model: formatDuration(effort.modelMs, t),
+          tool: formatDuration(effort.toolMs, t),
+        })}
+        {' · '}
+        {t('effortTokens', {
+          input: formatTokens(effort.inputTokens),
+          output: formatTokens(effort.outputTokens),
+        })}
+        {effort.cacheReadTokens > 0 && ` · ${t('effortCached', { cached: formatTokens(effort.cacheReadTokens) })}`}
+      </span>
+    </>
   )
 }
 

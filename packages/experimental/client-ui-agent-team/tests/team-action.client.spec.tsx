@@ -1352,4 +1352,63 @@ describe('TeamAction', () => {
     await Promise.resolve()
     expect(load).toHaveBeenCalledOnce()
   })
+
+  it('names what a member has spent, and omits cache it was never served', async () => {
+    const spent: TeamView = {
+      ...view,
+      members: [
+        {
+          ...view.members[0]!,
+          effort: {
+            turns: 3, modelMs: 12_400, toolMs: 1100,
+            inputTokens: 18_200, outputTokens: 2400, cacheReadTokens: 96_000,
+          },
+        },
+        {
+          ...view.members[1]!,
+          effort: {
+            turns: 1, modelMs: 185_000, toolMs: 0,
+            inputTokens: 900, outputTokens: 1_200_000, cacheReadTokens: 0,
+          },
+        },
+      ],
+    }
+    render(<TeamAction {...props(actions({ load: () => Promise.resolve({ ok: true, value: spent }) }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    const cards = [...document.querySelectorAll('[data-team-member-card]')]
+    fireEvent.focus(cards[0]!)
+    const lead = await screen.findByText((_text, node) => node?.matches('[data-team-effort]') ?? false)
+    // Each unit is rounded to the largest one that still reads as a measurement.
+    expect(lead.textContent).toContain(zh.effortTurns.replace('{turns}', '3'))
+    expect(lead.textContent).toContain(zh.unitSeconds.replace('{value}', '12.4'))
+    expect(lead.textContent).toContain(zh.unitSeconds.replace('{value}', '1.1'))
+    expect(lead.textContent).toContain('18.2K')
+    expect(lead.textContent).toContain('2.4K')
+    expect(lead.textContent).toContain('96.0K')
+
+    fireEvent.blur(cards[0]!)
+    fireEvent.focus(cards[1]!)
+    await waitFor(() => {
+      const worker = document.querySelector('[data-team-effort]')
+      // Past a minute the reading switches to minutes and seconds.
+      expect(worker?.textContent).toContain(
+        zh.unitMinutes.replace('{minutes}', '3').replace('{seconds}', '5'),
+      )
+      expect(worker?.textContent).toContain(zh.unitMs.replace('{value}', '0'))
+      expect(worker?.textContent).toContain('1.2M')
+      // Nothing was served from cache, so the card does not claim a zero.
+      expect(worker?.textContent).not.toContain(zh.effortCached.replace('{cached}', ''))
+    })
+  })
+
+  it('reads a member with no reported effort without inventing one', async () => {
+    render(<TeamAction {...props(actions())} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    fireEvent.focus(document.querySelector('[data-team-member-card]')!)
+    expect(await screen.findByText(zh.assignedTasks)).toBeTruthy()
+    expect(document.querySelector('[data-team-effort]')).toBeNull()
+  })
 })

@@ -5648,12 +5648,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TeamInterruptView {\n    readonly previousStatus: \'running\' | \'idle\' | \'inactive\';\n}',
   },
   {
+    name: 'TeamMemberEffort',
+    declaration: 'export interface TeamMemberEffort {\n    readonly turns: number;\n    readonly modelMs: number;\n    readonly toolMs: number;\n    readonly inputTokens: number;\n    readonly outputTokens: number;\n    readonly cacheReadTokens: number;\n}',
+  },
+  {
     name: 'TeamMembership',
     declaration: 'export interface TeamMembership {\n    readonly root: Agent;\n    readonly id: TeamId;\n    readonly role: \'lead\' | \'teammate\';\n    readonly name: string;\n}',
   },
   {
     name: 'TeamMemberView',
-    declaration: 'export interface TeamMemberView {\n    readonly id: SessionId;\n    readonly name: string;\n    readonly role: \'lead\' | \'teammate\';\n    readonly status: \'running\' | \'idle\' | \'inactive\' | \'provisioning\' | \'failed\';\n    readonly description?: string;\n    readonly provider?: string;\n    readonly context?: \'fresh\' | \'fork\';\n    readonly model?: string;\n    readonly diagnostics: string[];\n}',
+    declaration: 'export interface TeamMemberView {\n    readonly id: SessionId;\n    readonly name: string;\n    readonly role: \'lead\' | \'teammate\';\n    readonly status: \'running\' | \'idle\' | \'inactive\' | \'provisioning\' | \'failed\';\n    readonly description?: string;\n    readonly provider?: string;\n    readonly context?: \'fresh\' | \'fork\';\n    readonly model?: string;\n    readonly effort?: TeamMemberEffort;\n    readonly diagnostics: string[];\n}',
   },
   {
     name: 'TeamMessageId',

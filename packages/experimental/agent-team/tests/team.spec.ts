@@ -974,6 +974,57 @@ describe('Team Remote API', () => {
     expect(() => ctx.agentTeams.remoteInterrupt(lead, 'editor')).toThrow('unexpected interrupt failure')
   })
 
+  it('reports what each member has spent, and nothing without the projections', async () => {
+    const { ctx, lead } = await setup(['hang'])
+    // No projection service in this composition: no effort, rather than zeros
+    // that would read as a member which ran and spent nothing.
+    expect(ctx.agentTeams.remoteView(lead).members[0]?.effort).toBeUndefined()
+
+    const states: Record<string, unknown> = {
+      sessionStats: { turns: 3, steps: 7, llmMs: 12_400, toolMs: 1100 },
+      tokenUsage: { uncachedInputTokens: 18_200, outputTokens: 2400, cacheReadTokens: 96_000 },
+    }
+    ctx.provide('sessionProjections', {
+      stateOf: (_session: unknown, key: string) => states[key],
+    } as never)
+
+    expect(ctx.agentTeams.remoteView(lead).members[0]?.effort).toEqual({
+      turns: 3,
+      modelMs: 12_400,
+      toolMs: 1100,
+      inputTokens: 18_200,
+      outputTokens: 2400,
+      cacheReadTokens: 96_000,
+    })
+
+    // A teammate reports its own Session while it is attached to one.
+    const editor = await spawn(ctx, lead, 'editor')
+    expect(ctx.agentTeams.remoteView(lead).members[1]).toMatchObject({
+      name: 'editor',
+      status: 'running',
+      effort: { turns: 3, outputTokens: 2400 },
+    })
+
+    // One unit present and the other absent still reports the half that exists.
+    delete states['tokenUsage']
+    expect(ctx.agentTeams.remoteView(lead).members[0]?.effort).toMatchObject({
+      turns: 3, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
+    })
+    states['tokenUsage'] = { uncachedInputTokens: 5, outputTokens: 6, cacheReadTokens: 7 }
+    delete states['sessionStats']
+    expect(ctx.agentTeams.remoteView(lead).members[0]?.effort).toMatchObject({
+      turns: 0, modelMs: 0, toolMs: 0, inputTokens: 5, outputTokens: 6, cacheReadTokens: 7,
+    })
+    delete states['tokenUsage']
+    expect(ctx.agentTeams.remoteView(lead).members[0]?.effort).toBeUndefined()
+    // A member the runtime is not holding reports nothing, whatever is mounted.
+    states['sessionStats'] = { turns: 9, steps: 9, llmMs: 1, toolMs: 1 }
+    ctx.agentTeams.interrupt(lead, 'editor')
+    await waitNoAgent(ctx, editor.member.id)
+    expect(ctx.agentTeams.remoteView(lead).members[1]).toMatchObject({ status: 'inactive' })
+    expect(ctx.agentTeams.remoteView(lead).members[1]?.effort).toBeUndefined()
+  })
+
   it('reads the Team history newest first and bounds the requested limit', async () => {
     const { ctx, lead } = await setup([])
     // The Lead log carries far more than Team records; only Team records

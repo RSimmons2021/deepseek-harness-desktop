@@ -16,6 +16,8 @@
     { "path": "../../typert/protocol" },
     { "path": "../../subagent/subagent" },
     { "path": "../../session/session-persistence" },
+    { "path": "../../session/session-stats" },
+    { "path": "../../llm/token-meter" },
     { "path": "../../runtime-diagnostics/invariants" }
   ]
 }
