@@ -506,8 +506,14 @@
 .memberGlyph {
   position: relative;
   display: grid;
-  width: clamp(82px, 8vw, 132px);
-  height: clamp(82px, 8vw, 132px);
+  /*
+   * Bounded by the card as well as by the viewport. The shape is rotated, so
+   * its bounding box is about 1.15x its own width; a collapsed card is narrow
+   * enough that the unbounded size overflowed and the mark inside it was cut
+   * off against the card's clip.
+   */
+  width: min(clamp(82px, 8vw, 132px), 74%);
+  aspect-ratio: 1;
   margin: auto;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--team-ink) 13%, transparent);
@@ -1087,6 +1093,131 @@
 .form textarea {
   min-height: 58px;
   resize: vertical;
+}
+
+/* The task form's own structure: a label, then the control it names. */
+.fieldLabel {
+  margin-top: 3px;
+  color: var(--team-ink-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.fieldHint {
+  color: var(--team-ink-faint);
+  font-size: 11px;
+}
+
+/*
+ * Blockers are chosen from the board rather than typed: the board names a task
+ * by its subject, and an id was something a reader had to go and look up.
+ */
+.blockerList {
+  display: flex;
+  max-height: 116px;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  gap: 1px;
+  list-style: none;
+}
+
+.blockerRow {
+  display: flex;
+  align-items: center;
+  padding: 4px 5px;
+  border-radius: 6px;
+  gap: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.blockerRow:hover {
+  background: color-mix(in srgb, var(--team-ink) 7%, transparent);
+}
+
+.blockerRow input {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--team-orange);
+  cursor: pointer;
+}
+
+.blockerRow span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A claimed scope is a removable chip, not a substring of a comma list. */
+.scopeChips {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+  list-style: none;
+}
+
+.scopeChips button {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 6px;
+  border: 1px solid var(--team-stroke);
+  border-radius: 100px;
+  background: color-mix(in srgb, var(--team-ink) 8%, transparent);
+  color: var(--team-ink-muted);
+  gap: 5px;
+  cursor: pointer;
+}
+
+.scopeChips button:hover {
+  border-color: var(--team-danger);
+  color: var(--team-danger);
+}
+
+.scopeChips code {
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+}
+
+.scopeEntry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scopeEntry input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.scopeEntry button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--team-stroke);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--team-ink-muted);
+  cursor: pointer;
+}
+
+.scopeEntry button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.scopeEntry button:not(:disabled):hover {
+  border-color: var(--team-stroke-strong);
+  color: var(--team-ink);
 }
 
 .notice {

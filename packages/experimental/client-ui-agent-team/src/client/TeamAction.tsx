@@ -939,7 +939,7 @@ export function TeamAction({
                                     {member.effort !== undefined && (
                                       <MemberEffort effort={member.effort} t={t} />
                                     )}
-                                    <MemberTail lines={tailLines} t={t} />
+                                    <MemberTail lines={tailLines} reduceMotion={reduceMotion === true} t={t} />
                                   </motion.span>
                                 )}
                               </AnimatePresence>
@@ -1008,6 +1008,7 @@ export function TeamAction({
                   </div>
                   {creating && (
                     <TaskForm
+                      blockable={view.tasks}
                       draft={createDraft}
                       setDraft={setCreateDraft}
                       pending={pendingTasks.has('create')}
@@ -1029,6 +1030,8 @@ export function TeamAction({
                           ? (
                             <TaskForm
                               key={task.id}
+                              // A task cannot wait for itself.
+                              blockable={view.tasks.filter(candidate => candidate.id !== task.id)}
                               draft={editDraft}
                               setDraft={setEditDraft}
                               pending={pendingTasks.has(task.id)}
@@ -1192,7 +1195,15 @@ export function TeamAction({
 
 interface MemberTailProps {
   lines: readonly TeamTailLine[]
+  reduceMotion: boolean
   t: TeamSurfaceProps['t']
+}
+
+/** Per-row reveal, newest first, capped so a full window still finishes quickly. */
+function tailRowTransition(index: number, reduceMotion: boolean): Transition {
+  return reduceMotion
+    ? { duration: 0.01 }
+    : { duration: 0.26, ease: [0.23, 1, 0.32, 1], delay: Math.min(index, 5) * 0.04 }
 }
 
 /** Copy key naming what one tail line was. */
@@ -1209,7 +1220,7 @@ function tailKindKey(kind: TeamTailLine['kind']): TeamKey {
  * was and shows its text as the service cut it; the whole transcript is one
  * navigation away in the member's own conversation.
  */
-function MemberTail({ lines, t }: MemberTailProps) {
+function MemberTail({ lines, reduceMotion, t }: MemberTailProps) {
   return (
     <>
       <span className={css.detailLabel}>{t('tailLabel')}</span>
@@ -1223,8 +1234,14 @@ function MemberTail({ lines, t }: MemberTailProps) {
         {lines.length === 0 && <span className={css.detailValue}>{t('tailEmpty')}</span>}
         {lines.length > 0 && (
           <ol className={css.tail} data-team-tail>
-            {lines.map(line => (
-              <li key={line.seq} className={css.tailLine}>
+            {lines.map((line, index) => (
+              <motion.li
+                key={line.seq}
+                className={css.tailLine}
+                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: 'translateY(6px)' }}
+                animate={{ opacity: 1, transform: 'translateY(0px)' }}
+                transition={tailRowTransition(index, reduceMotion)}
+              >
                 <span className={css.tailKind}>
                   {t(tailKindKey(line.kind), line.name === undefined ? {} : { name: line.name })}
                 </span>
@@ -1232,7 +1249,7 @@ function MemberTail({ lines, t }: MemberTailProps) {
                   {line.text}
                   {line.truncated === true && <em>{t('tailTruncated')}</em>}
                 </span>
-              </li>
+              </motion.li>
             ))}
           </ol>
         )}
@@ -1274,6 +1291,8 @@ function MemberEffort({ effort, t }: MemberEffortProps) {
 }
 
 interface TaskFormProps {
+  /** Tasks this one may wait for; the task being edited is not among them. */
+  blockable: readonly TeamTask[]
   draft: Draft
   setDraft: (draft: Draft) => void
   pending: boolean
@@ -1370,14 +1389,82 @@ function SpawnForm({ draft, setDraft, pending, onSave, onCancel, t }: SpawnFormP
   )
 }
 
-function TaskForm({ draft, setDraft, pending, onSave, onCancel, t }: TaskFormProps) {
+function TaskForm({ blockable, draft, setDraft, pending, onSave, onCancel, t }: TaskFormProps) {
   const field = (key: keyof Draft, value: string): void => { setDraft({ ...draft, [key]: value }) }
+  const [scopeDraft, setScopeDraft] = useState('')
+  const blockers = items(draft.blockers)
+  const scopes = items(draft.scopes)
+
+  // The board names a blocker by its subject, so choosing one does too: the
+  // ids this sends are never something a reader has to look up and type.
+  const toggleBlocker = (id: string): void => {
+    const next = blockers.includes(id) ? blockers.filter(held => held !== id) : [...blockers, id]
+    field('blockers', next.join(','))
+  }
+  const addScope = (): void => {
+    const scope = scopeDraft.trim()
+    if (scope === '') return
+    field('scopes', [...new Set([...scopes, scope])].join(','))
+    setScopeDraft('')
+  }
+
   return (
     <div className={css.form} aria-busy={pending || undefined}>
       <input value={draft.subject} placeholder={t('subject')} onChange={(event: ChangeEvent<HTMLInputElement>) => { field('subject', event.target.value) }} />
       <textarea value={draft.description} placeholder={t('description')} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => { field('description', event.target.value) }} />
-      <input value={draft.blockers} placeholder={t('blockers')} onChange={(event: ChangeEvent<HTMLInputElement>) => { field('blockers', event.target.value) }} />
-      <input value={draft.scopes} placeholder={t('scopes')} onChange={(event: ChangeEvent<HTMLInputElement>) => { field('scopes', event.target.value) }} />
+
+      <span className={css.fieldLabel}>{t('blockers')}</span>
+      {blockable.length === 0 && <span className={css.fieldHint}>{t('blockersNone')}</span>}
+      {blockable.length > 0 && (
+        <ul className={css.blockerList}>
+          {blockable.map(candidate => (
+            <li key={candidate.id}>
+              <label className={css.blockerRow}>
+                <input
+                  type="checkbox"
+                  checked={blockers.includes(candidate.id)}
+                  onChange={() => { toggleBlocker(candidate.id) }}
+                />
+                <span>{candidate.subject}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <span className={css.fieldLabel}>{t('scopes')}</span>
+      {scopes.length > 0 && (
+        <ul className={css.scopeChips}>
+          {scopes.map(scope => (
+            <li key={scope}>
+              <button
+                type="button"
+                aria-label={t('scopeRemove', { scope })}
+                onClick={() => { field('scopes', scopes.filter(held => held !== scope).join(',')) }}
+              >
+                <code>{scope}</code>
+                <IconCloseOutline16 size={11} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className={css.scopeEntry}>
+        <input
+          value={scopeDraft}
+          placeholder={t('scopesHint')}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => { setScopeDraft(event.target.value) }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return
+            // The form's save button is not this field's submit action.
+            event.preventDefault()
+            addScope()
+          }}
+        />
+        <button type="button" aria-label={t('scopeAdd')} disabled={scopeDraft.trim() === ''} onClick={addScope}>
+          <IconPlusOutline16 size={13} />
+        </button>
+      </div>
       <div className={css.formActions}>
         <button type="button" disabled={pending || draft.subject.trim() === '' || draft.description.trim() === ''} onClick={onSave}>
           {t(pending ? 'savingTask' : 'save')}

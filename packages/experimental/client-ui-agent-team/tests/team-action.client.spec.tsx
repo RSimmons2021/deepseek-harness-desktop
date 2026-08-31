@@ -32,6 +32,29 @@ const task: TeamTask = {
   ready: false,
   writeScopeWarnings: ['write scopes overlap with task-2'],
 }
+const blocker: TeamTask = {
+  id: TASK_2,
+  revision: 1,
+  subject: 'Publish the notes',
+  description: 'Ship them',
+  status: 'pending',
+  blockedBy: [],
+  writeScopes: [],
+  ready: true,
+  writeScopeWarnings: [],
+}
+
+/** Choose a blocking task the way the board names it, by subject. */
+function pickBlocker(subject: string): void {
+  fireEvent.click(screen.getByRole('checkbox', { name: subject }))
+}
+
+/** Add one write scope through the chip entry. */
+function addScope(scope: string): void {
+  fireEvent.change(screen.getByPlaceholderText(zh.scopesHint), { target: { value: scope } })
+  fireEvent.click(screen.getByRole('button', { name: zh.scopeAdd }))
+}
+
 const view: TeamView = {
   members: [
     { id: SESSION, name: 'lead', role: 'lead', status: 'idle', model: 'model-a', diagnostics: [] },
@@ -46,6 +69,16 @@ const view: TeamView = {
   ],
   tasks: [task],
   capacity: 8,
+}
+
+/** A board with something to depend on: a task cannot wait for itself. */
+const pairedView: TeamView = { ...view, tasks: [task, blocker] }
+
+/** The board card for one task, so a two-task board stays unambiguous. */
+function taskCard(subject: string): HTMLElement {
+  const card = screen.getByText(subject).closest('article')
+  if (card === null) throw new Error(`no task card for ${subject}`)
+  return card
 }
 
 function taskSuccess(value: TeamTask): TeamTaskActionResult {
@@ -632,8 +665,11 @@ describe('TeamAction', () => {
     fireEvent.click(screen.getByRole('button', { name: /新建任务/u }))
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: ' New task ' } })
     fireEvent.change(screen.getByPlaceholderText('任务描述'), { target: { value: ' Details ' } })
-    fireEvent.change(screen.getByPlaceholderText(/依赖任务/u), { target: { value: 'task-1, task-1' } })
-    fireEvent.change(screen.getByPlaceholderText(/写入范围/u), { target: { value: 'src/a, src/b' } })
+    pickBlocker('Implement runtime')
+    addScope('src/a')
+    addScope('src/b')
+    // The same scope twice is one claim.
+    addScope('src/a')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => {
       expect(createTask).toHaveBeenCalledWith(SESSION, {
@@ -691,39 +727,48 @@ describe('TeamAction', () => {
     })
     const load = vi.fn(() => Promise.resolve({
       ok: true as const,
-      value: { ...view, tasks: current.status === 'deleted' ? [] : [current] },
+      value: { ...view, tasks: current.status === 'deleted' ? [blocker] : [current, blocker] },
     }))
     render(<TeamAction {...props(actions({ load, updateTask }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'worker' } })
+    // By id, not by subject: the subject changes mid-test, and once the task
+    // depends on the other one its card names that one too.
+    const owned = (): HTMLElement => {
+      const card = screen.getAllByRole('article').find(node => (node.textContent ?? '').includes(TASK_1))
+      if (card === undefined) throw new Error('the task under edit left the board')
+      return card
+    }
+    fireEvent.change(within(owned()).getByRole('combobox'), { target: { value: 'worker' } })
     await waitFor(() => {
-      expect(screen.getByRole<HTMLSelectElement>('combobox').value).toBe('worker')
+      expect(within(owned()).getByRole<HTMLSelectElement>('combobox').value).toBe('worker')
       expect(current).toMatchObject({ revision: 2, ownerName: 'worker' })
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /编辑/u }))
+    fireEvent.click(within(owned()).getByRole('button', { name: /编辑/u }))
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Updated runtime' } })
     fireEvent.change(screen.getByPlaceholderText('任务描述'), { target: { value: 'Updated details' } })
-    fireEvent.change(screen.getByPlaceholderText(/依赖任务/u), { target: { value: 'task-0' } })
-    fireEvent.change(screen.getByPlaceholderText(/写入范围/u), { target: { value: 'src/runtime' } })
+    pickBlocker('Publish the notes')
+    addScope('src/runtime')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(await screen.findByText('Updated runtime')).toBeTruthy()
     expect(current).toMatchObject({
       revision: 4,
       description: 'Updated details',
-      blockedBy: ['task-0'],
-      writeScopes: ['src/runtime'],
+      blockedBy: [TASK_2],
+      // Editing adds to the scopes the task already claimed rather than
+      // replacing them, which retyping a comma list used to force.
+      writeScopes: ['src', 'src/runtime'],
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /完成/u }))
+    fireEvent.click(within(owned()).getByRole('button', { name: /完成/u }))
     fireEvent.click(await screen.findByRole('button', { name: /重开/u }))
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /重开/u })).toBeNull()
       expect(current).toMatchObject({ revision: 6, status: 'pending' })
     })
-    fireEvent.click(screen.getByRole('button', { name: /删除/u }))
+    fireEvent.click(within(owned()).getByRole('button', { name: /删除/u }))
     expect(updateTask).toHaveBeenCalledTimes(5)
     const confirmation = screen.getByRole('group', { name: `${zh.deleteConfirm}: Updated runtime` })
     fireEvent.click(within(confirmation).getByRole('button', { name: zh.delete }))
@@ -770,8 +815,8 @@ describe('TeamAction', () => {
     first.unmount()
 
     const dependencyLoad = vi.fn()
-      .mockResolvedValueOnce({ ok: true, value: view })
-      .mockResolvedValueOnce({ ok: true, value: { ...view, tasks: [{ ...task, revision: 2, subject: 'Edited' }] } })
+      .mockResolvedValueOnce({ ok: true, value: pairedView })
+      .mockResolvedValueOnce({ ok: true, value: { ...pairedView, tasks: [{ ...task, revision: 2, subject: 'Edited' }, blocker] } })
       .mockResolvedValueOnce(remoteFailure('dependency reload failed'))
     const dependencyUpdate = vi.fn()
       .mockResolvedValueOnce(taskSuccess({ ...task, revision: 2, subject: 'Edited' }))
@@ -779,9 +824,9 @@ describe('TeamAction', () => {
     render(<TeamAction {...props(actions({ load: dependencyLoad, updateTask: dependencyUpdate }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
-    fireEvent.click(screen.getByRole('button', { name: /编辑/u }))
+    fireEvent.click(within(taskCard('Implement runtime')).getByRole('button', { name: /编辑/u }))
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Edited' } })
-    fireEvent.change(screen.getByPlaceholderText(zh.blockers), { target: { value: 'task-2' } })
+    pickBlocker('Publish the notes')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(await screen.findByText('dependency reload failed (internal)')).toBeTruthy()
     expect(screen.queryByText(zh.conflict)).toBeNull()
@@ -945,23 +990,27 @@ describe('TeamAction', () => {
       .mockResolvedValueOnce(taskSuccess({ ...task, revision: 2, subject: 'Saved edit' }))
       .mockResolvedValueOnce(taskRejected('dependency failed'))
       .mockResolvedValueOnce(taskSuccess({ ...unownedTask, revision: 2 }))
-    render(<TeamAction {...props(actions({ updateTask }))} />)
+    render(<TeamAction {...props(actions({
+      load: () => Promise.resolve({ ok: true, value: pairedView }),
+      updateTask,
+    }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
+    const edited = (): HTMLElement => taskCard('Implement runtime')
 
     fireEvent.click(screen.getByRole('button', { name: /新建任务/u }))
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(screen.queryByPlaceholderText('任务标题')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /编辑/u }))
+    fireEvent.click(within(edited()).getByRole('button', { name: /编辑/u }))
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(screen.queryByRole('button', { name: '保存' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /编辑/u }))
+    fireEvent.click(within(edited()).getByRole('button', { name: /编辑/u }))
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(await screen.findByText('edit failed (internal)')).toBeTruthy()
 
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Saved edit' } })
-    fireEvent.change(screen.getByPlaceholderText(zh.blockers), { target: { value: 'task-2' } })
+    pickBlocker('Publish the notes')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(await screen.findByText('dependency failed (team-rejected)')).toBeTruthy()
     expect(updateTask.mock.calls[2]?.[1]).toMatchObject({
@@ -971,7 +1020,7 @@ describe('TeamAction', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } })
+    fireEvent.change(within(edited()).getByRole('combobox'), { target: { value: '' } })
     await waitFor(() => {
       expect(updateTask).toHaveBeenLastCalledWith(SESSION, expect.objectContaining({
         action: 'reassign',
@@ -984,12 +1033,15 @@ describe('TeamAction', () => {
     const updateTask = vi.fn()
       .mockResolvedValueOnce(taskSuccess({ ...task, revision: 2, subject: 'Edited' }))
       .mockResolvedValueOnce(remoteFailure('dependency transport failed'))
-    render(<TeamAction {...props(actions({ updateTask }))} />)
+    render(<TeamAction {...props(actions({
+      load: () => Promise.resolve({ ok: true, value: pairedView }),
+      updateTask,
+    }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
-    fireEvent.click(screen.getByRole('button', { name: /编辑/u }))
+    fireEvent.click(within(taskCard('Implement runtime')).getByRole('button', { name: /编辑/u }))
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Edited' } })
-    fireEvent.change(screen.getByPlaceholderText(zh.blockers), { target: { value: 'task-2' } })
+    pickBlocker('Publish the notes')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
     expect(await screen.findByText('dependency transport failed (internal)')).toBeTruthy()
@@ -1017,18 +1069,18 @@ describe('TeamAction', () => {
 
   it('reloads a dependency conflict and ignores dependency settlement after a session switch', async () => {
     const load = vi.fn()
-      .mockResolvedValueOnce({ ok: true, value: view })
-      .mockResolvedValueOnce({ ok: true, value: { ...view, tasks: [{ ...task, revision: 2, subject: 'Conflict edit' }] } })
-      .mockResolvedValueOnce({ ok: true, value: { ...view, tasks: [{ ...task, revision: 3 }] } })
+      .mockResolvedValueOnce({ ok: true, value: pairedView })
+      .mockResolvedValueOnce({ ok: true, value: { ...pairedView, tasks: [{ ...task, revision: 2, subject: 'Conflict edit' }, blocker] } })
+      .mockResolvedValueOnce({ ok: true, value: { ...pairedView, tasks: [{ ...task, revision: 3 }, blocker] } })
     const conflictUpdate = vi.fn()
       .mockResolvedValueOnce(taskSuccess({ ...task, revision: 2, subject: 'Conflict edit' }))
       .mockResolvedValueOnce(taskConflict('stale dependency'))
     const first = render(<TeamAction {...props(actions({ load, updateTask: conflictUpdate }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
-    fireEvent.click(screen.getByRole('button', { name: /编辑/u }))
+    fireEvent.click(within(taskCard('Implement runtime')).getByRole('button', { name: /编辑/u }))
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Conflict edit' } })
-    fireEvent.change(screen.getByPlaceholderText(zh.blockers), { target: { value: 'task-2' } })
+    pickBlocker('Publish the notes')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(await screen.findByText(zh.conflict)).toBeTruthy()
     expect(load).toHaveBeenCalledTimes(3)
@@ -1036,8 +1088,8 @@ describe('TeamAction', () => {
 
     const dependencyReload = Promise.withResolvers<TeamActionResult<TeamView>>()
     const dependencyLoad = vi.fn()
-      .mockResolvedValueOnce({ ok: true, value: view })
-      .mockResolvedValueOnce({ ok: true, value: { ...view, tasks: [{ ...task, revision: 2, subject: 'Late edit' }] } })
+      .mockResolvedValueOnce({ ok: true, value: pairedView })
+      .mockResolvedValueOnce({ ok: true, value: { ...pairedView, tasks: [{ ...task, revision: 2, subject: 'Late edit' }, blocker] } })
       .mockImplementationOnce(() => dependencyReload.promise)
     const staleUpdate = vi.fn()
       .mockResolvedValueOnce(taskSuccess({ ...task, revision: 2, subject: 'Late edit' }))
@@ -1045,9 +1097,9 @@ describe('TeamAction', () => {
     const second = render(<TeamAction {...props(actions({ load: dependencyLoad, updateTask: staleUpdate }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
-    fireEvent.click(screen.getByRole('button', { name: /编辑/u }))
+    fireEvent.click(within(taskCard('Implement runtime')).getByRole('button', { name: /编辑/u }))
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Late edit' } })
-    fireEvent.change(screen.getByPlaceholderText(zh.blockers), { target: { value: 'task-2' } })
+    pickBlocker('Publish the notes')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => { expect(dependencyLoad).toHaveBeenCalledTimes(3) })
     second.rerender(<TeamAction {...props(actions(), 'next-session' as SessionId)} />)
@@ -1061,12 +1113,15 @@ describe('TeamAction', () => {
     const lateUpdate = vi.fn()
       .mockResolvedValueOnce(taskSuccess({ ...task, revision: 2, subject: 'Late edit' }))
       .mockImplementationOnce(() => dependency.promise)
-    const third = render(<TeamAction {...props(actions({ updateTask: lateUpdate }))} />)
+    const third = render(<TeamAction {...props(actions({
+      load: () => Promise.resolve({ ok: true, value: pairedView }),
+      updateTask: lateUpdate,
+    }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
-    fireEvent.click(screen.getByRole('button', { name: /编辑/u }))
+    fireEvent.click(within(taskCard('Implement runtime')).getByRole('button', { name: /编辑/u }))
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Late edit' } })
-    fireEvent.change(screen.getByPlaceholderText(zh.blockers), { target: { value: 'task-2' } })
+    pickBlocker('Publish the notes')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => { expect(lateUpdate).toHaveBeenCalledTimes(2) })
     expect(screen.getByRole<HTMLButtonElement>('button', { name: zh.savingTask }).disabled).toBe(true)
@@ -1583,5 +1638,46 @@ describe('TeamAction', () => {
       .toEqual(['settled', 'settled', 'failed', 'recorded'])
     // The live pixel-chase marker belongs to state that is still moving.
     expect(rows.querySelector('[data-state="ongoing"]')).toBeNull()
+  })
+
+  it('builds a task from the board rather than from typed ids and lists', async () => {
+    const createTask = vi.fn((_session: SessionId, _input: {
+      subject: string
+      blockedBy: readonly TeamTaskId[]
+      writeScopes: readonly string[]
+    }) => Promise.resolve(taskSuccess({ ...task, id: TASK_2 })))
+    render(<TeamAction {...props(actions({
+      load: () => Promise.resolve({ ok: true, value: pairedView }),
+      createTask,
+    }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    fireEvent.click(screen.getByRole('button', { name: /新建任务/u }))
+    fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Wired task' } })
+    fireEvent.change(screen.getByPlaceholderText('任务描述'), { target: { value: 'Details' } })
+
+    // A blocker is chosen and unchosen by its subject.
+    pickBlocker('Implement runtime')
+    pickBlocker('Publish the notes')
+    pickBlocker('Implement runtime')
+
+    // A scope is added by Enter as well as by the button, and removed as a chip.
+    const entry = screen.getByPlaceholderText(zh.scopesHint)
+    fireEvent.change(entry, { target: { value: 'src/kept' } })
+    fireEvent.keyDown(entry, { key: 'Enter' })
+    fireEvent.change(entry, { target: { value: 'src/dropped' } })
+    fireEvent.keyDown(entry, { key: 'a' })
+    fireEvent.keyDown(entry, { key: 'Enter' })
+    // Blank input adds nothing, by either route.
+    fireEvent.keyDown(entry, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: zh.scopeRemove.replace('{scope}', 'src/dropped') }))
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => { expect(createTask).toHaveBeenCalledOnce() })
+    expect(createTask.mock.calls[0]?.[1]).toMatchObject({
+      subject: 'Wired task',
+      blockedBy: [TASK_2],
+      writeScopes: ['src/kept'],
+    })
   })
 })

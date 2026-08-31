@@ -43,7 +43,7 @@ kind: "package-reference"
 
 板下方通过 `agentTeams/activity` 按最新在前列出 Team 记录过的事情。每一行标明该变化被记录的时间、它属于哪一类、涉及的 teammate 或 task，以及它到达的状态。时间线中没有任何动效：每一行都是已经发生过的事情，而此处的实时标记会声称某项工作仍在运行 —— 而它在读者到来之前就已结束。颜色用于区分失败、已了结的变化，以及其余记录。已完成的 task 与已送达的 message 在板上不留下其他痕迹，因此这里是它们唯一得以保留的地方。本次构建没有对应文案的 phase 或 status 会显示其记录值，而不是丢弃该行。
 
-任务板展示 task identity、owner、blocker、readiness、提示性 write scope 与重叠 warning。用户可以通过 `agentTeams/createTask` 与 `agentTeams/updateTask` 创建、编辑、分配或取消分配、完成、重开和删除任务。每次 update 都发送当前显示的 revision，create 或 update rejection 都保留为显式 business result。
+任务板展示 task identity、owner、blocker、readiness、提示性 write scope 与重叠 warning。用户可以通过 `agentTeams/createTask` 与 `agentTeams/updateTask` 创建、编辑、分配或取消分配、完成、重开和删除任务。依赖关系按 subject 从看板中选取，而不是手动输入 id —— 因为看板从不展示 id，读者不得不去别处查找；任务也永远不会把自己列为可选项。write scope 逐条路径添加、以 chip 形式移除，因此编辑任务时会保留它已经声明的 scope，而不必重新键入整份清单。tail 的各行会随到达顺序依次显现。每次 update 都发送当前显示的 revision，create 或 update rejection 都保留为显式 business result。
 
 -----
 

@@ -63,7 +63,14 @@ function props(current: SessionId | undefined): DesktopTeamRootProps {
     interrupt: () => Promise.reject(new Error('not used')),
     follow: () => () => {},
     activity: () => Promise.resolve({ ok: true, value: [] }),
-    tail: () => Promise.resolve({ ok: true, value: [] }),
+    // Tail rows reveal in sequence; under reduced motion they simply appear.
+    tail: () => Promise.resolve({
+      ok: true,
+      value: [
+        { seq: 2, time: 0, kind: 'tool', name: 'write', text: '{"filePath":"a.ts"}' },
+        { seq: 1, time: 0, kind: 'assistant', text: 'drafting' },
+      ],
+    }),
     openTeammate: () => Promise.resolve(),
     t: makeTranslate(zh, commonZh),
   } as unknown as DesktopTeamRootProps
@@ -88,5 +95,7 @@ describe('reduced motion', () => {
     expect(await screen.findByText(zh.scopeOverlap)).toBeTruthy()
     // The expanded detail names the work assigned to that teammate.
     expect(screen.getAllByText('Implement runtime').length).toBeGreaterThan(1)
+    // The tail's rows are present without their staged reveal.
+    expect(document.querySelectorAll('[data-team-tail] > li')).toHaveLength(2)
   })
 })
