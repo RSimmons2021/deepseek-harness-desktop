@@ -71,6 +71,7 @@ async function bench(options: {
     spawnTeammate: answer('agentTeams/spawnTeammate', { ok: true, value: { member: view.members[0] } }),
     sendMessage: answer('agentTeams/sendMessage', { ok: true, value: { messageId: 'm-1', status: 'accepted' } }),
     activity: answer('agentTeams/activity', []),
+    tail: answer('agentTeams/tail', []),
     interrupt: answer('agentTeams/interrupt', { ok: true, value: { previousStatus: 'running' } }),
     waitForChange: answer('agentTeams/waitForChange', { timedOut: true }),
     updateTask: (...args: unknown[]) => {
@@ -319,12 +320,13 @@ describe('ui-team browser plugin', () => {
     })
     await actions.sendMessage(CHILD, { target: 'writer', message: 'take it', delivery: 'quiet' })
     await actions.activity(CHILD, 40)
+    await actions.tail(CHILD, 'writer', 6)
     await actions.interrupt(CHILD, 'writer')
     await actions.waitForChange(CHILD, 10_000)
 
     expect(b.calls.map(call => call.method)).toEqual([
       'agentTeams/spawnTeammate', 'agentTeams/sendMessage', 'agentTeams/activity',
-      'agentTeams/interrupt', 'agentTeams/waitForChange',
+      'agentTeams/tail', 'agentTeams/interrupt', 'agentTeams/waitForChange',
     ])
     // Every one addresses the Lead, never the teammate conversation it was called from.
     expect(b.calls.every(call => call.args[0] === SESSION)).toBe(true)

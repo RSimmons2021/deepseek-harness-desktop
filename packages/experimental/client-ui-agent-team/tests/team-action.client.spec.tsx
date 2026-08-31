@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
-  TeamActivityEntry, TeamTaskId, TeamTaskView as TeamTask, TeamView, TeamWaitResult,
+  TeamActivityEntry, TeamTailLine, TeamTaskId, TeamTaskView as TeamTask, TeamView, TeamWaitResult,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
@@ -115,6 +115,7 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
     // first wait instead of reloading underneath the assertions.
     waitForChange: () => new Promise(() => {}),
     activity: () => Promise.resolve({ ok: true, value: [] }),
+    tail: () => Promise.resolve({ ok: true, value: [] }),
     openTeammate: () => Promise.resolve(),
     hooks: {
       colorScheme: { getSnapshot: () => 'dark', subscribe: () => () => {} },
@@ -1410,5 +1411,55 @@ describe('TeamAction', () => {
     fireEvent.focus(document.querySelector('[data-team-member-card]')!)
     expect(await screen.findByText(zh.assignedTasks)).toBeTruthy()
     expect(document.querySelector('[data-team-effort]')).toBeNull()
+  })
+
+  it('tails the expanded member and drops the tail when the card collapses', async () => {
+    const lines: TeamTailLine[] = [
+      { seq: 9, time: 0, kind: 'tool-result', text: 'wrote a.ts' },
+      { seq: 8, time: 0, kind: 'tool', name: 'write', text: '{"filePath":"a.ts"}' },
+      { seq: 7, time: 0, kind: 'assistant', text: 'x'.repeat(20), truncated: true },
+    ]
+    const tail = vi.fn((_session: SessionId, _member: string, _limit: number) =>
+      Promise.resolve({ ok: true as const, value: lines }))
+    render(<TeamAction {...props(actions({ tail }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    expect(document.querySelector('[data-team-tail]')).toBeNull()
+
+    const worker = document.querySelector('[data-team-member-card="worker-id"]')
+    if (worker === null) throw new Error('the roster did not render the teammate')
+    fireEvent.focus(worker)
+
+    const recorded = await screen.findByText((_text, node) => node?.matches('[data-team-tail]') ?? false)
+    const rows = [...recorded.children].map(row => row.textContent ?? '')
+    expect(rows[0]).toContain('wrote a.ts')
+    expect(rows[1]).toContain(zh.tailTool.replace('{name}', 'write'))
+    // A line the service cut says so rather than pretending it is complete.
+    expect(rows[2]).toContain(zh.tailTruncated)
+    expect(tail).toHaveBeenCalledWith(SESSION, 'worker', 6)
+
+    fireEvent.blur(worker)
+    await waitFor(() => { expect(document.querySelector('[data-team-tail]')).toBeNull() })
+  })
+
+  it('says so when a member has recorded nothing, and ignores a refused tail', async () => {
+    const empty = await (async () => {
+      const rendered = render(<TeamAction {...props(actions())} />)
+      fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+      await screen.findByText('Implement runtime')
+      fireEvent.focus(document.querySelector('[data-team-member-card]')!)
+      expect(await screen.findByText(zh.tailEmpty)).toBeTruthy()
+      return rendered
+    })()
+    empty.unmount()
+
+    render(<TeamAction {...props(actions({ tail: () => Promise.resolve(remoteFailure('no tail')) }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    fireEvent.focus(document.querySelector('[data-team-member-card]')!)
+    // A refused tail leaves the card's other detail alone.
+    expect(await screen.findByText(zh.assignedTasks)).toBeTruthy()
+    expect(screen.getByText(zh.tailEmpty)).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

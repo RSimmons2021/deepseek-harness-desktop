@@ -12,7 +12,7 @@ import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SubagentService from '@deepseek-ai/dsh-subagent'
 import * as SubagentFork from '@deepseek-ai/dsh-subagent-fork-in-process'
 import * as SubagentSpawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
-import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
+import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import TeamService, { foldTeam, TeamError, TeamId, TeamMessageId, TeamTaskId } from '../src/index.ts'
 import { TeamRuntimeLifecycle } from '../src/lifecycle.ts'
 import type { TeamMemberSnapshot, TeamMessageSnapshot, TeamTaskSnapshot } from '../src/index.ts'
@@ -972,6 +972,91 @@ describe('Team Remote API', () => {
       error: { code: 'team-rejected', message: 'no such teammate' },
     })
     expect(() => ctx.agentTeams.remoteInterrupt(lead, 'editor')).toThrow('unexpected interrupt failure')
+  })
+
+  it('tails a live member\'s own work and bounds the requested limit', async () => {
+    // A tool call keeps the teammate's turn open, so its work is recorded
+    // while it is still attached — which is exactly when a tail is read.
+    const { ctx, lead } = await setup([
+      toolCallResponse('call-1', 'write', { filePath: 'a.ts' }, 'drafting the adapter'),
+      'hang',
+    ])
+    const editor = await spawn(ctx, lead, 'editor')
+
+    await vi.waitFor(() => {
+      expect(ctx.agentTeams.remoteTail(lead, 'editor', 10).length).toBeGreaterThan(2)
+    }, { timeout: 5_000 })
+    // Newest first: what the call returned, the call itself, then the prose
+    // the member said before making it.
+    const tailed = ctx.agentTeams.remoteTail(lead, 'editor', 10)
+    expect(tailed).toMatchObject([
+      { kind: 'tool-result' },
+      { kind: 'tool', name: 'write' },
+      { kind: 'assistant', text: 'drafting the adapter' },
+    ])
+    expect(tailed[0]?.text).toContain('unknown tool')
+    expect(tailed[1]?.text).toContain('a.ts')
+    expect(ctx.agentTeams.remoteTail(lead, 'editor', 1)).toHaveLength(1)
+    // The Lead can be tailed by its own name; it has recorded nothing here.
+    expect(ctx.agentTeams.remoteTail(lead, 'lead', 10)).toEqual([])
+
+    expect(() => ctx.agentTeams.remoteTail(lead, 'ghost', 10)).toThrow('no teammate named "ghost"')
+    for (const limit of [0, 51, 1.5, Number.NaN]) {
+      expect(() => ctx.agentTeams.remoteTail(lead, 'editor', limit))
+        .toThrow('limit must be an integer from 1 through 50')
+    }
+
+    ctx.agentTeams.interrupt(lead, 'editor')
+    await waitNoAgent(ctx, editor.member.id)
+    // A member the runtime is no longer holding has no live log to tail.
+    expect(ctx.agentTeams.remoteTail(lead, 'editor', 10)).toEqual([])
+  })
+
+  it('releases a Team wait for work a tail shows, and not for other events', async () => {
+    const { ctx, lead } = await setup(['hang'])
+    const editor = await spawn(ctx, lead, 'editor')
+    const editorAgent = ctx.agents.get(editor.member.id)
+    if (editorAgent === undefined) throw new Error('the teammate is not attached')
+
+    const waiting = ctx.agentTeams.waitForChange(lead, 10_000, SIGNAL)
+    const pending = Symbol('pending')
+    // An event no tail shows leaves the wait outstanding: a teammate's title
+    // or checkpoint is not it doing work.
+    editorAgent.session.append('session/title', {
+      title: 'editor', messageSeqs: [], source: { kind: 'fallback' },
+    })
+    await expect(Promise.race([waiting, Promise.resolve(pending)])).resolves.toBe(pending)
+
+    editorAgent.session.append('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: {
+        id: 'tail-1' as never,
+        role: 'assistant',
+        content: [{ type: 'text', text: 'working on it' }],
+        source: { kind: 'model' },
+      },
+    } as never, { surfaceOp: 'append' })
+    await expect(waiting).resolves.toEqual({ timedOut: false })
+
+    // A Session with no live Agent behind it belongs to no member, so its
+    // events reach the observer and release nothing.
+    const orphan = ctx.sessions.create(SessionId('tail-orphan'))
+    const outstanding = ctx.agentTeams.waitForChange(lead, 10_000, SIGNAL)
+    orphan.append('assistant/message', {
+      turn: 1,
+      step: 1,
+      message: {
+        id: 'tail-2' as never,
+        role: 'assistant',
+        content: [{ type: 'text', text: 'nobody is listening' }],
+        source: { kind: 'model' },
+      },
+    } as never, { surfaceOp: 'append' })
+    await expect(Promise.race([outstanding, Promise.resolve(pending)])).resolves.toBe(pending)
+
+    ctx.agentTeams.interrupt(lead, 'editor')
+    await waitNoAgent(ctx, editor.member.id)
   })
 
   it('leases a claimed scope to the member whose in-progress task claims it', async () => {

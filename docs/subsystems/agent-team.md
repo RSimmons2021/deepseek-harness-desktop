@@ -188,6 +188,19 @@ interrupt(caller: Agent, targetName: string): { previousStatus: 'running' | 'idl
 tryMembership(agent: Agent): TeamMembership | undefined
 
 /**
+ * Read one member's most recent recorded work, newest first.
+ *
+ * Reads that member's own attached Session log. A member the runtime is not
+ * holding has no live log to tail and returns nothing, which is the same
+ * state its roster row reports as inactive.
+ * @param agent - exact live Team member reading the tail.
+ * @param memberName - the member to tail, by its immutable Team name.
+ * @param limit - newest lines to return, from one through fifty.
+ * @returns the most recent lines, newest first.
+ */
+@Remote('tail') remoteTail(agent: Agent, memberName: string, limit: number): TeamTailLine[]
+
+/**
  * Decide whether one member may write a workspace-relative path.
  *
  * A scope claimed by an in-progress task is that task owner's to write: this

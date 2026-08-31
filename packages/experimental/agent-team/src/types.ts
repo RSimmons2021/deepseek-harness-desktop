@@ -333,6 +333,31 @@ export interface TeamActivityEntry {
   readonly target?: string
 }
 
+/** What one recorded line of a member's own work was. */
+export type TeamTailKind = 'assistant' | 'tool' | 'tool-result'
+
+/**
+ * One line of a member's most recent work, read from its own Session log.
+ *
+ * Text only, already truncated: a tail is for watching a teammate work, not
+ * for reconstructing its transcript, and the teammate's own conversation is
+ * one navigation away.
+ */
+export interface TeamTailLine {
+  /** Monotonic sequence in that member's Session log; stable across reads. */
+  readonly seq: number
+  /** Unix epoch milliseconds the line was recorded. */
+  readonly time: number
+  /** Which kind of line this was. */
+  readonly kind: TeamTailKind
+  /** Tool name for the tool kinds; absent for assistant text. */
+  readonly name?: string
+  /** The line's text, truncated to the service's per-line cap. */
+  readonly text: string
+  /** Whether {@link text} was cut at the cap. */
+  readonly truncated?: true
+}
+
 /** Result of waiting for Team activity. */
 export interface TeamWaitResult {
   readonly timedOut: boolean

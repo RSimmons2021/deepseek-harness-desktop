@@ -517,6 +517,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   TeamMembership: 'agent-team.md',
   TeamMessageMutationResult: 'agent-team.md',
   TeamSpawnMutationResult: 'agent-team.md',
+  TeamTailLine: 'agent-team.md',
   TeamTaskMutationResult: 'agent-team.md',
   TeamTaskId: 'agent-team.md',
   TeamTaskView: 'agent-team.md',

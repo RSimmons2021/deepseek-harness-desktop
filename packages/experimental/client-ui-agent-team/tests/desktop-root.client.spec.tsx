@@ -55,6 +55,7 @@ function props(overrides: {
     interrupt: () => Promise.reject(new Error('not used')),
     waitForChange: () => new Promise(() => {}),
     activity: () => Promise.resolve({ ok: true, value: [] }),
+    tail: () => Promise.resolve({ ok: true, value: [] }),
     openTeammate: () => Promise.resolve(),
     t: makeTranslate(zh, commonZh),
   } as unknown as DesktopTeamRootProps

@@ -9,6 +9,7 @@ import type {
   TeamActivityEntry,
   TeamActivityKind,
   TeamMemberEffort,
+  TeamTailLine,
   TeamMemberView as TeamRosterMember,
   TeamMessageMutationResult,
   TeamSpawnMutationResult,
@@ -97,6 +98,15 @@ export interface TeamActionInjected {
    * task or a delivered message survives.
    */
   activity: (sessionId: SessionId, limit: number) => Promise<TeamActionResult<TeamActivityEntry[]>>
+  /**
+   * Read one member's most recent recorded work, newest first. A member the
+   * runtime is not holding has no live log to tail and answers with nothing.
+   */
+  tail: (
+    sessionId: SessionId,
+    memberName: string,
+    limit: number,
+  ) => Promise<TeamActionResult<TeamTailLine[]>>
   openTeammate: (sessionId: SessionId, member: TeamRosterMember) => Promise<void>
 }
 
@@ -108,7 +118,7 @@ export type TeamActionProps =
 export type TeamSurfaceProps = Pick<
   TeamActionProps,
   | 'sessionId' | 'load' | 'createTask' | 'updateTask' | 'spawnTeammate'
-  | 'sendMessage' | 'interrupt' | 'waitForChange' | 'activity' | 'openTeammate'
+  | 'sendMessage' | 'interrupt' | 'waitForChange' | 'activity' | 'tail' | 'openTeammate'
   | 'useColorScheme' | 'toggleTheme' | 't'
 > & {
   /** Keep the designed Team workspace mounted as the application surface. */
@@ -139,6 +149,9 @@ const ROSTER_MIN_TILES = 4
 
 /** Timeline entries kept on screen; the service caps one read at 200. */
 const ACTIVITY_LIMIT = 40
+
+/** Tail lines shown on one expanded card; the service caps one read at 50. */
+const TAIL_LIMIT = 6
 
 /** Board lanes, in the order an operator reads them: now, next, waiting, over. */
 const LANE_ORDER = ['laneActive', 'laneReady', 'laneBlocked', 'laneDone'] as const
@@ -259,13 +272,14 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
   sessionId, load, createTask, updateTask, spawnTeammate, sendMessage, interrupt, waitForChange,
-  activity, openTeammate, useColorScheme, toggleTheme, t, standalone = false,
+  activity, tail, openTeammate, useColorScheme, toggleTheme, t, standalone = false,
 }: TeamSurfaceProps) {
   const colorScheme = useColorScheme(scheme => scheme)
   const [open, setOpen] = useState(standalone)
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<TeamView | null>(null)
   const [history, setHistory] = useState<TeamActivityEntry[]>([])
+  const [tailLines, setTailLines] = useState<readonly TeamTailLine[]>([])
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [createDraft, setCreateDraft] = useState<Draft>(EMPTY_DRAFT)
@@ -359,6 +373,23 @@ export function TeamAction({
     if (!standalone) return
     void refresh()
   }, [refresh, standalone])
+
+  // The expanded card's tail follows the reloaded view rather than a timer of
+  // its own: a member recording work releases the same Team wait the board
+  // reloads on, so both arrive together.
+  useEffect(() => {
+    const member = view?.members.find(candidate => candidate.id === activeMemberId)
+    if (member === undefined) {
+      setTailLines([])
+      return
+    }
+    const reading = new AbortController()
+    const stopped = (): boolean => reading.signal.aborted
+    void tail(sessionId, member.name, TAIL_LIMIT).then((result) => {
+      if (!stopped() && result.ok) setTailLines(result.value)
+    })
+    return () => { reading.abort() }
+  }, [activeMemberId, sessionId, tail, view])
 
   // Follow the running Team: hold one bounded wait, reload on every observed
   // change, and re-enter the wait. A transport failure ends the loop and leaves
@@ -842,6 +873,7 @@ export function TeamAction({
                                     {member.effort !== undefined && (
                                       <MemberEffort effort={member.effort} t={t} />
                                     )}
+                                    <MemberTail lines={tailLines} t={t} />
                                   </motion.span>
                                 )}
                               </AnimatePresence>
@@ -1084,6 +1116,49 @@ export function TeamAction({
         </motion.div>
       )}
     </div>
+  )
+}
+
+interface MemberTailProps {
+  lines: readonly TeamTailLine[]
+  t: TeamSurfaceProps['t']
+}
+
+/** Copy key naming what one tail line was. */
+function tailKindKey(kind: TeamTailLine['kind']): TeamKey {
+  switch (kind) {
+    case 'assistant': return 'tailAssistant'
+    case 'tool': return 'tailTool'
+    case 'tool-result': return 'tailToolResult'
+  }
+}
+
+/**
+ * A member's most recent recorded work, newest first. Each line names what it
+ * was and shows its text as the service cut it; the whole transcript is one
+ * navigation away in the member's own conversation.
+ */
+function MemberTail({ lines, t }: MemberTailProps) {
+  return (
+    <>
+      <span className={css.detailLabel}>{t('tailLabel')}</span>
+      {lines.length === 0 && <span className={css.detailValue}>{t('tailEmpty')}</span>}
+      {lines.length > 0 && (
+        <ol className={css.tail} data-team-tail>
+          {lines.map(line => (
+            <li key={line.seq} className={css.tailLine}>
+              <span className={css.tailKind}>
+                {t(tailKindKey(line.kind), line.name === undefined ? {} : { name: line.name })}
+              </span>
+              <span className={css.tailText}>
+                {line.text}
+                {line.truncated === true && <em>{t('tailTruncated')}</em>}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </>
   )
 }
 

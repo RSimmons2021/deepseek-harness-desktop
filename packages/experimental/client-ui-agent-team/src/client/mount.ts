@@ -81,6 +81,9 @@ function registerUi(ctx: ClientContext): void {
     async activity(sessionId, limit) {
       return await ctx.remote.agentTeams.activity(leadSessionId(sessionId), limit)
     },
+    async tail(sessionId, memberName, limit) {
+      return await ctx.remote.agentTeams.tail(leadSessionId(sessionId), memberName, limit)
+    },
     async interrupt(sessionId, targetName) {
       return await ctx.remote.agentTeams.interrupt(leadSessionId(sessionId), targetName)
     },

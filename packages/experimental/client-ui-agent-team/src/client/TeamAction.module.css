@@ -1116,3 +1116,51 @@
   color: var(--team-ink-muted);
   white-space: nowrap;
 }
+
+/*
+ * A member's most recent work, newest first. Bounded height with its own
+ * scroll: a card is a summary, and the member's whole conversation is one
+ * navigation away.
+ */
+.tail {
+  display: flex;
+  max-height: 132px;
+  flex-direction: column;
+  margin: 2px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  gap: 4px;
+  list-style: none;
+}
+
+.tailLine {
+  display: grid;
+  align-items: baseline;
+  column-gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  font-size: 11px;
+}
+
+.tailKind {
+  color: var(--team-ink-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tailText {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--team-ink);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-family: var(--ds-font-family-code);
+  line-height: 1.45;
+}
+
+.tailText em {
+  color: var(--team-ink-muted);
+  font-style: normal;
+}

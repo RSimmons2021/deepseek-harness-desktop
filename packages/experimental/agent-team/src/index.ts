@@ -3,11 +3,13 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { TeamActivity } from './activity.ts'
 import { errorMessage, TeamError } from './error.ts'
 import { TeamJournal } from './journal.ts'
+import { tailLineOf } from './tail.ts'
 import { TeamRuntimeLifecycle } from './lifecycle.ts'
 import { TeamMailbox } from './mailbox.ts'
 import { TeamRoster } from './roster.ts'
@@ -29,6 +31,7 @@ import type {
   TeamMessageMutationResult,
   TeamSpawnMutationResult,
   TeamTaskMutationResult,
+  TeamTailLine,
   TeamTaskView,
   TeamView,
   TeamWaitResult,
@@ -54,6 +57,12 @@ const DEFAULT_MAX_PENDING_MESSAGES = 64
 const DEFAULT_MAX_MESSAGE_BYTES = 65_536
 const DEFAULT_DISPOSAL_TIMEOUT_MS = 5_000
 const MAX_ACTIVITY_ENTRIES = 200
+
+/** Tail lines one read may return. */
+const MAX_TAIL_LINES = 50
+
+/** UTF-16 units retained per tail line before it is cut. */
+const MAX_TAIL_LINE_LENGTH = 400
 const DEFAULT_FRESH_PROVIDER = 'spawn'
 const DEFAULT_FORK_PROVIDER = 'fork'
 
@@ -121,7 +130,10 @@ export class TeamService extends TypertRemoteService {
     )
     this.tasks = new TeamTaskBoard(this.journal, this.config.maxTasks)
 
-    ctx.on('session/event', (session, event) => { this.mailbox.observeSessionEvent(session, event) })
+    ctx.on('session/event', (session, event) => {
+      this.mailbox.observeSessionEvent(session, event)
+      this.notifyTailActivity(session, event)
+    })
     ctx.on('agent/session-start', ({ agent }) => { this.scheduleRecovery(agent) })
     ctx.on('agent/status', ({ agent }) => {
       const membership = this.roster.tryMembership(agent)
@@ -250,6 +262,63 @@ export class TeamService extends TypertRemoteService {
    */
   tryMembership(agent: Agent): TeamMembership | undefined {
     return this.roster.tryMembership(agent)
+  }
+
+  /**
+   * Release Team waiters when a member records a line a tail would show.
+   *
+   * Only the three event types {@link tailLineOf} projects, so a wait is not
+   * released by every chunk a streaming member produces; a member's step
+   * releases it a few times, not once per token.
+   * @param session - the Session that appended the event.
+   * @param event - the appended event.
+   */
+  private notifyTailActivity(session: Session, event: SessionEvent): void {
+    if (event.type !== 'assistant/message' && event.type !== 'tool/call' && event.type !== 'tool/result') return
+    const agent = this.ctx.agents.get(session.id)
+    if (agent === undefined) return
+    const membership = this.roster.tryMembership(agent)
+    if (membership !== undefined) this.activity.notify(membership.id)
+  }
+
+  /**
+   * Read one member's most recent recorded work, newest first.
+   *
+   * Reads that member's own attached Session log. A member the runtime is not
+   * holding has no live log to tail and returns nothing, which is the same
+   * state its roster row reports as inactive.
+   * @param agent - exact live Team member reading the tail.
+   * @param memberName - the member to tail, by its immutable Team name.
+   * @param limit - newest lines to return, from one through fifty.
+   * @returns the most recent lines, newest first.
+   */
+  @Remote('tail')
+  remoteTail(agent: Agent, memberName: string, limit: number): TeamTailLine[] {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_TAIL_LINES) {
+      throw new TeamError(
+        `limit must be an integer from 1 through ${String(MAX_TAIL_LINES)}`,
+        'TEAM_INVALID_LIMIT',
+      )
+    }
+    const membership = this.roster.membership(agent)
+    const state = this.journal.state(membership.root)
+    const targetId = memberName === 'lead'
+      ? membership.root.id
+      : [...state.members.values()].find(member => member.name === memberName)?.id
+    if (targetId === undefined) {
+      throw new TeamError(`no teammate named "${memberName}"`, 'TEAM_MEMBER_NOT_FOUND')
+    }
+    const target = this.ctx.agents.get(targetId)
+    if (target === undefined) return []
+    // Projected forward and reversed, like the Team history: the log is
+    // already in memory, and one shape for both reads is worth more than an
+    // early exit that would have to index into it.
+    const lines: TeamTailLine[] = []
+    for (const event of target.session.events) {
+      const line = tailLineOf(event, MAX_TAIL_LINE_LENGTH)
+      if (line !== undefined) lines.push(line)
+    }
+    return lines.reverse().slice(0, limit)
   }
 
   /**

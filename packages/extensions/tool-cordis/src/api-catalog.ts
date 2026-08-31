@@ -416,6 +416,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Team membership, or undefined for non-Team subagents and stale identities.',
       },
       {
+        signature: '@Remote(\'tail\') remoteTail(agent: Agent, memberName: string, limit: number): TeamTailLine[]',
+        description: 'Read one member\'s most recent recorded work, newest first.\n\nReads that member\'s own attached Session log. A member the runtime is not holding has no live log to tail and returns nothing, which is the same state its roster row reports as inactive.',
+        parameters: [{ name: 'agent', description: 'exact live Team member reading the tail.' }, { name: 'memberName', description: 'the member to tail, by its immutable Team name.' }, { name: 'limit', description: 'newest lines to return, from one through fifty.' }],
+        returns: 'the most recent lines, newest first.',
+      },
+      {
         signature: 'writeRefusal(agent: Agent, path: string): string | undefined',
         description: 'Decide whether one member may write a workspace-relative path.\n\nA scope claimed by an in-progress task is that task owner\'s to write: this refuses every other member, and refuses nothing else. An unclaimed path, an unowned task\'s scope, and a scope the caller itself claims all pass, so enforcement adds exclusion between members without requiring a claim before any write.\n\nA caller that is not a Team member writes as it always did.',
         parameters: [{ name: 'agent', description: 'exact live Agent performing the write.' }, { name: 'path', description: 'normalized workspace-relative path being written.' }],
@@ -5676,6 +5682,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TeamSpawnMutationResult',
     declaration: 'export type TeamSpawnMutationResult = {\n    readonly ok: true;\n    readonly value: SpawnTeammateResult;\n} | {\n    readonly ok: false;\n    readonly error: {\n        readonly code: \'team-rejected\';\n        readonly message: string;\n    };\n};',
+  },
+  {
+    name: 'TeamTailKind',
+    declaration: 'export type TeamTailKind = \'assistant\' | \'tool\' | \'tool-result\';',
+  },
+  {
+    name: 'TeamTailLine',
+    declaration: 'export interface TeamTailLine {\n    readonly seq: number;\n    readonly time: number;\n    readonly kind: TeamTailKind;\n    readonly name?: string;\n    readonly text: string;\n    readonly truncated?: true;\n}',
   },
   {
     name: 'TeamTaskAction',
