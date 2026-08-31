@@ -100,6 +100,12 @@ export interface TeamTaskView {
 export interface TeamView {
   readonly members: TeamMemberView[]
   readonly tasks: TeamTaskView[]
+  /**
+   * Immutable teammate names this Team may hold, from `maxMembers`. A surface
+   * offering to add one needs the same limit the service enforces, or it stops
+   * offering while the Team still has room.
+   */
+  readonly capacity: number
 }
 
 /** One peer message retained until its target Session records it. */

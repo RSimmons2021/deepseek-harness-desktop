@@ -259,6 +259,7 @@ export class TeamService extends TypertRemoteService {
     return {
       members: this.listMembers(agent),
       tasks: this.listTasks(agent),
+      capacity: this.config.maxMembers,
     }
   }
 

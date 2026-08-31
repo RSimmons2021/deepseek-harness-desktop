@@ -125,6 +125,9 @@ interface SpawnDraft {
 
 const EMPTY_SPAWN: SpawnDraft = { name: '', description: '', prompt: '', context: 'fresh' }
 
+/** Tiles the roster keeps on screen so a nearly empty Team still reads as a row. */
+const ROSTER_MIN_TILES = 4
+
 /** Peer-message form state. The target comes from the card the form opened on. */
 interface MessageDraft {
   message: string
@@ -461,6 +464,14 @@ export function TeamAction({
   }
 
   const teammates = view?.members.filter(member => member.role === 'teammate') ?? []
+  // One addable seat while the Team is under its own capacity, then inert seats
+  // only to fill the row out. Padding to a fixed four hid the control the
+  // moment a Team grew past it, while the service still had room.
+  const roomToAdd = (view?.members.length ?? 0) < (view?.capacity ?? 0)
+  const seatCount = Math.max(
+    roomToAdd ? 1 : 0,
+    Math.max(0, ROSTER_MIN_TILES - (view?.members.length ?? 0)),
+  )
   // There is something to delegate once the board carries a task or a member is
   // already running; before that the lead has not done work worth splitting.
   const canDelegate = (view?.tasks.length ?? 0) > 0
@@ -715,7 +726,7 @@ export function TeamAction({
                         </div>
                       )
                     })}
-                    {Array.from({ length: Math.max(0, 4 - view.members.length) }, (_, index) => {
+                    {Array.from({ length: seatCount }, (_, index) => {
                       // Only the first free seat takes a new teammate; the rest
                       // stay inert so the row still reads as remaining capacity.
                       // Delegation is offered once there is work to delegate, so

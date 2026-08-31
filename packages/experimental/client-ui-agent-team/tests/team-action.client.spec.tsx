@@ -44,6 +44,7 @@ const view: TeamView = {
     },
   ],
   tasks: [task],
+  capacity: 8,
 }
 
 function taskSuccess(value: TeamTask): TeamTaskActionResult {

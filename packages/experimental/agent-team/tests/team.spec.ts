@@ -844,6 +844,8 @@ describe('Team Remote API', () => {
     expect(ctx.agentTeams.remoteView(lead)).toEqual({
       members: [expect.objectContaining({ name: 'lead', role: 'lead', status: 'idle' })],
       tasks: [],
+      // The surface offering to add a teammate needs the limit the service enforces.
+      capacity: 8,
     })
 
     const createdResult = await ctx.agentTeams.remoteCreateTask(lead, {
