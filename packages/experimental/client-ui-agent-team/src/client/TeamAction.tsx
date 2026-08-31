@@ -260,11 +260,30 @@ function activityStateKey(entry: TeamActivityEntry): TeamKey | undefined {
   }
 }
 
-/** Settled changes read as done, a failed teammate as an error, the rest as motion. */
-function activityDot(entry: TeamActivityEntry): 'ongoing' | 'done' | 'error' {
-  if (entry.state === 'failed') return 'error'
-  if (entry.kind === 'message-delivered' || entry.state === 'completed') return 'done'
-  return 'ongoing'
+/**
+ * How one recorded change reads at a glance.
+ *
+ * Every entry is a past fact, so none of them is `ongoing`: a live marker on a
+ * record from ten minutes ago claims work is still happening that finished
+ * long before the reader arrived.
+ */
+function activityMark(entry: TeamActivityEntry): 'failed' | 'settled' | 'recorded' {
+  if (entry.state === 'failed') return 'failed'
+  if (entry.kind === 'message-delivered' || entry.state === 'completed') return 'settled'
+  return 'recorded'
+}
+
+/**
+ * The mark a member's card carries in place of a portrait.
+ *
+ * Teammate names are the roles they were created for — `writer`, `reviewer`,
+ * `code-reviewer` — so the name's initials say what the member is here to do.
+ * A hyphenated name contributes one letter per word, up to two.
+ */
+function monogram(name: string): string {
+  // `charAt` is total, so a name of any shape produces a mark without a
+  // fallback branch no validated Team name could ever take.
+  return name.split('-').map(word => word.charAt(0)).join('').slice(0, 2).toUpperCase()
 }
 
 function formatRecordedTime(timestamp: number): string {
@@ -889,7 +908,7 @@ export function TeamAction({
                                 data-team-member-working={working || undefined}
                                 aria-hidden="true"
                               >
-                                <IconUserOutline16 size={44} />
+                                <span className={css.memberMonogram}>{monogram(member.name)}</span>
                               </span>
                               <span className={css.memberText}>
                                 <strong>{member.name}</strong>
@@ -1143,7 +1162,7 @@ export function TeamAction({
                             <time className={css.activityTime} dateTime={new Date(entry.time).toISOString()}>
                               {formatRecordedTime(entry.time)}
                             </time>
-                            <StateDot state={activityDot(entry)} />
+                            <span className={css.activityMark} data-activity-mark={activityMark(entry)} />
                             <span className={css.activityKind}>{t(activityKindKey(entry.kind))}</span>
                             <span className={css.activitySubject}>
                               {entry.target === undefined ? entry.subject : `${entry.subject} → ${entry.target}`}

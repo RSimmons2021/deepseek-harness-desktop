@@ -1544,4 +1544,44 @@ describe('TeamAction', () => {
     // Running and provisioning members are working; idle and failed are not.
     expect(marked).toEqual([true, true, false, false])
   })
+
+  it('marks a member by the role its name states, not by a portrait', async () => {
+    const named: TeamView = {
+      ...view,
+      members: [
+        view.members[0]!,
+        { ...view.members[1]!, name: 'code-reviewer' },
+        { id: 'solo-id' as SessionId, name: 'q', role: 'teammate', status: 'idle', diagnostics: [] },
+      ],
+    }
+    render(<TeamAction {...props(actions({ load: () => Promise.resolve({ ok: true, value: named }) }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    const marks = [...document.querySelectorAll('[data-team-member-card]')]
+      .map(card => card.querySelector('[class*="memberMonogram"]')?.textContent)
+    // One letter per word, at most two; a single-character name still reads.
+    expect(marks).toEqual(['L', 'CR', 'Q'])
+  })
+
+  it('never animates a timeline row, because every row already happened', async () => {
+    const history: TeamActivityEntry[] = [
+      { seq: 4, time: 0, kind: 'message-delivered', subject: 'lead', target: 'writer' },
+      { seq: 3, time: 0, kind: 'task', subject: 'Implement runtime', state: 'completed' },
+      { seq: 2, time: 0, kind: 'member', subject: 'ghost', state: 'failed' },
+      { seq: 1, time: 0, kind: 'task', subject: 'Implement runtime', state: 'pending' },
+    ]
+    render(<TeamAction {...props(actions({
+      activity: () => Promise.resolve({ ok: true, value: history }),
+    }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    const rows = document.querySelector('[data-team-activity]')
+    if (rows === null) throw new Error('the timeline did not render')
+    expect([...rows.children].map(row => row.querySelector('[data-activity-mark]')?.getAttribute('data-activity-mark')))
+      .toEqual(['settled', 'settled', 'failed', 'recorded'])
+    // The live pixel-chase marker belongs to state that is still moving.
+    expect(rows.querySelector('[data-state="ongoing"]')).toBeNull()
+  })
 })

@@ -592,7 +592,13 @@
   }
 }
 
+.memberGlyph {
+  --team-glyph-counter-rotation: 8deg;
+}
+
 .memberGlyph1 {
+  --team-glyph-counter-rotation: 0deg;
+
   border-radius: 50%;
   transform: rotate(0);
 }
@@ -603,6 +609,8 @@
 }
 
 .memberGlyph2 {
+  --team-glyph-counter-rotation: -12deg;
+
   transform: rotate(12deg);
 }
 
@@ -612,8 +620,25 @@
 }
 
 .memberGlyph3 {
+  --team-glyph-counter-rotation: 22deg;
+
   border-radius: 24% 50% 24% 50%;
   transform: rotate(-22deg);
+}
+
+/*
+ * The member's own mark, drawn from the role its name states. It replaces a
+ * portrait no agent has, and it is the one part of the glyph that differs per
+ * member rather than per seat position.
+ */
+.memberMonogram {
+  color: color-mix(in srgb, var(--team-ink) 82%, transparent);
+  font-size: clamp(26px, 2.6vw, 44px);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  /* The seat shapes are rotated; the mark reads upright inside them. */
+  transform: rotate(var(--team-glyph-counter-rotation, 0deg));
 }
 
 .memberText {
@@ -1209,6 +1234,26 @@
 
 .activityRow:nth-child(odd) {
   background: color-mix(in srgb, var(--team-ink) 4%, transparent);
+}
+
+/*
+ * Static by design: every row is something that already happened, so nothing
+ * here animates. Colour separates a failure from a settled change and from the
+ * rest, which are simply recorded.
+ */
+.activityMark {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--team-ink) 34%, transparent);
+}
+
+.activityMark[data-activity-mark='settled'] {
+  background: var(--dsw-alias-state-success-primary);
+}
+
+.activityMark[data-activity-mark='failed'] {
+  background: var(--dsw-alias-state-error-primary);
 }
 
 .activityTime {

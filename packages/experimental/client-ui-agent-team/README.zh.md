@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 检查并导航 roster
 
-打开 workspace 会调用 `agentTeams/view`。Roster card 展示持久 name、运行时 status、model、diagnostics 与当前 task ownership。Pointer hover 或键盘 focus 通过 shared-layout motion 预览一个 card，同时让相邻 card 保持空间连续性；点击则将其锁定展开，直到再次点击 —— 仅靠 hover 会在指针落到一张仍在其下方增长的 card 之外时丢失。touch input 不合成 hover，reduced-motion 偏好会移除空间动画。打开 teammate 会话是独立的控件，而非 card 的点击行为，因此阅读某个成员不会再意外地离开 workspace。承载 composer 的 card 从旁边的空席位取得空间，而不是从其他成员那里 —— 否则读者正在为之撰写消息的那些名字反而会被截断。card 展开的详情按高度而非仅按透明度开合，因此其上方的名称与模型行会随之移动，而不是在该元素离开布局流时突然跳位。处于 running 或 provisioning 的成员会让其 glyph 动起来 —— 内环扫描、标记绕行、并有一圈涟漪扩散而出 —— 因此 roster 上的动效意味着确有工作在进行，而不是对每张 card 一视同仁的装饰；idle、failed 与 inactive 的成员保持静止图形，而 reduced motion 会让它们全部静止。空余容量显示为不可交互的开放席位，不会伪造 Team member。展开的 card 还会 tail 该成员最近记录的工作 —— 它说的话、它运行的 tool，以及这些 tool 返回了什么，按最新在前并截断显示 —— 它跟随重新加载看板的同一个变化信号刷新，而不是自带计时器，并在 card 收起时立即丢弃。它还会在 roster 报告时说明该成员的投入 —— 轮次、模型与工具时间，以及输入、输出与缓存命中 token；只有当 provider 确实提供了缓存命中时才显示该项，因为此处的 0 与「没有缓存」是不同的事实。选择健康 teammate 时，系统刷新既有直接 child catalog，并打开普通的 `{ parentSessionId, childSessionId, mode: 'continuable' }` address。History 与后续人类 prompt 继续使用稳定 addressed-subagent 会话路径；本包不会添加 Team 专用 address 字段。
+打开 workspace 会调用 `agentTeams/view`。Roster card 展示持久 name、运行时 status、model、diagnostics 与当前 task ownership。card 携带成员自己的标记，而不是任何 agent 都没有的头像：取其名字所述角色的首字母，每个连字符分词一个字母，并在所分配的席位图形中保持正立。Pointer hover 或键盘 focus 通过 shared-layout motion 预览一个 card，同时让相邻 card 保持空间连续性；点击则将其锁定展开，直到再次点击 —— 仅靠 hover 会在指针落到一张仍在其下方增长的 card 之外时丢失。touch input 不合成 hover，reduced-motion 偏好会移除空间动画。打开 teammate 会话是独立的控件，而非 card 的点击行为，因此阅读某个成员不会再意外地离开 workspace。承载 composer 的 card 从旁边的空席位取得空间，而不是从其他成员那里 —— 否则读者正在为之撰写消息的那些名字反而会被截断。card 展开的详情按高度而非仅按透明度开合，因此其上方的名称与模型行会随之移动，而不是在该元素离开布局流时突然跳位。处于 running 或 provisioning 的成员会让其 glyph 动起来 —— 内环扫描、标记绕行、并有一圈涟漪扩散而出 —— 因此 roster 上的动效意味着确有工作在进行，而不是对每张 card 一视同仁的装饰；idle、failed 与 inactive 的成员保持静止图形，而 reduced motion 会让它们全部静止。空余容量显示为不可交互的开放席位，不会伪造 Team member。展开的 card 还会 tail 该成员最近记录的工作 —— 它说的话、它运行的 tool，以及这些 tool 返回了什么，按最新在前并截断显示 —— 它跟随重新加载看板的同一个变化信号刷新，而不是自带计时器，并在 card 收起时立即丢弃。它还会在 roster 报告时说明该成员的投入 —— 轮次、模型与工具时间，以及输入、输出与缓存命中 token；只有当 provider 确实提供了缓存命中时才显示该项，因为此处的 0 与「没有缓存」是不同的事实。选择健康 teammate 时，系统刷新既有直接 child catalog，并打开普通的 `{ parentSessionId, childSessionId, mode: 'continuable' }` address。History 与后续人类 prompt 继续使用稳定 addressed-subagent 会话路径；本包不会添加 Team 专用 address 字段。
 
 ### 管理任务板
 
@@ -41,7 +41,7 @@ kind: "package-reference"
 
 ### 查看已发生的事情
 
-板下方通过 `agentTeams/activity` 按最新在前列出 Team 记录过的事情。每一行标明该变化被记录的时间、它属于哪一类、涉及的 teammate 或 task，以及它到达的状态。已完成的 task 与已送达的 message 在板上不留下其他痕迹，因此这里是它们唯一得以保留的地方。本次构建没有对应文案的 phase 或 status 会显示其记录值，而不是丢弃该行。
+板下方通过 `agentTeams/activity` 按最新在前列出 Team 记录过的事情。每一行标明该变化被记录的时间、它属于哪一类、涉及的 teammate 或 task，以及它到达的状态。时间线中没有任何动效：每一行都是已经发生过的事情，而此处的实时标记会声称某项工作仍在运行 —— 而它在读者到来之前就已结束。颜色用于区分失败、已了结的变化，以及其余记录。已完成的 task 与已送达的 message 在板上不留下其他痕迹，因此这里是它们唯一得以保留的地方。本次构建没有对应文案的 phase 或 status 会显示其记录值，而不是丢弃该行。
 
 任务板展示 task identity、owner、blocker、readiness、提示性 write scope 与重叠 warning。用户可以通过 `agentTeams/createTask` 与 `agentTeams/updateTask` 创建、编辑、分配或取消分配、完成、重开和删除任务。每次 update 都发送当前显示的 revision，create 或 update rejection 都保留为显式 business result。
 
