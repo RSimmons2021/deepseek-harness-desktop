@@ -135,6 +135,11 @@ export class TeamRoster {
   list(membership: TeamMembership): TeamMemberView[] {
     const { root } = membership
     const state = this.journal.state(root)
+    const undelivered = new Map<SessionId, number>()
+    for (const message of state.messages.values()) {
+      if (state.delivered.has(message.id)) continue
+      undelivered.set(message.targetId, (undelivered.get(message.targetId) ?? 0) + 1)
+    }
     const leadEffort = this.effortOf(root.session)
     const result: TeamMemberView[] = [{
       id: root.id,
@@ -143,6 +148,7 @@ export class TeamRoster {
       status: root.status,
       ...root.options.model === undefined ? {} : { model: root.options.model },
       ...leadEffort === undefined ? {} : { effort: leadEffort },
+      pendingMessages: undelivered.get(root.id) ?? 0,
       diagnostics: [],
     }]
     for (const member of state.members.values()) {
@@ -163,6 +169,7 @@ export class TeamRoster {
         context: member.context,
         ...model === undefined ? {} : { model },
         ...effort === undefined ? {} : { effort },
+        pendingMessages: undelivered.get(member.id) ?? 0,
         diagnostics: member.error === undefined ? [] : [member.error],
       })
     }
@@ -477,6 +484,8 @@ export class TeamRoster {
       provider: member.provider,
       context: member.context,
       ...live?.options.model === undefined ? {} : { model: live.options.model },
+      // A member that has just been created has recorded no mail yet.
+      pendingMessages: 0,
       diagnostics: [],
     }
   }

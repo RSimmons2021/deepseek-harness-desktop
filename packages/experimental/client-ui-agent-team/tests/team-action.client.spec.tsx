@@ -57,13 +57,14 @@ function addScope(scope: string): void {
 
 const view: TeamView = {
   members: [
-    { id: SESSION, name: 'lead', role: 'lead', status: 'idle', model: 'model-a', diagnostics: [] },
+    { id: SESSION, name: 'lead', role: 'lead', status: 'idle', model: 'model-a', pendingMessages: 0, diagnostics: [] },
     {
       id: 'worker-id' as SessionId,
       name: 'worker',
       role: 'teammate',
       status: 'inactive',
       model: 'model-a',
+      pendingMessages: 0,
       diagnostics: [],
     },
   ],
@@ -131,6 +132,7 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
             name: 'writer',
             role: 'teammate',
             status: 'provisioning',
+            pendingMessages: 0,
             diagnostics: [],
           },
         },
@@ -164,7 +166,7 @@ describe('TeamAction', () => {
     const firstLoad = Promise.withResolvers<{ ok: true; value: TeamView }>()
     const nextView: TeamView = {
       ...view,
-      members: [{ id: nextSession, name: 'lead', role: 'lead', status: 'idle', diagnostics: [] }],
+      members: [{ id: nextSession, name: 'lead', role: 'lead', status: 'idle', pendingMessages: 0, diagnostics: [] }],
       tasks: [{ ...task, id: 'task-next' as TeamTaskId, subject: 'Next session task' }],
     }
     const load = vi.fn((sessionId: SessionId) => sessionId === SESSION
@@ -249,6 +251,7 @@ describe('TeamAction', () => {
             name: 'writer',
             role: 'teammate' as const,
             status: 'provisioning' as const,
+            pendingMessages: 0,
             diagnostics: [],
           },
         },
@@ -844,6 +847,7 @@ describe('TeamAction', () => {
           name: 'failed-worker',
           role: 'teammate',
           status: 'failed',
+          pendingMessages: 0,
           diagnostics: ['provider failed'],
         },
         {
@@ -851,6 +855,7 @@ describe('TeamAction', () => {
           name: 'provisioning-worker',
           role: 'teammate',
           status: 'provisioning',
+          pendingMessages: 0,
           diagnostics: [],
         },
       ],
@@ -1586,8 +1591,8 @@ describe('TeamAction', () => {
       members: [
         { ...view.members[0]!, status: 'running' },
         { ...view.members[1]!, status: 'provisioning' },
-        { id: 'idle-id' as SessionId, name: 'reader', role: 'teammate', status: 'idle', diagnostics: [] },
-        { id: 'gone-id' as SessionId, name: 'ghost', role: 'teammate', status: 'failed', diagnostics: [] },
+        { id: 'idle-id' as SessionId, name: 'reader', role: 'teammate', status: 'idle', pendingMessages: 0, diagnostics: [] },
+        { id: 'gone-id' as SessionId, name: 'ghost', role: 'teammate', status: 'failed', pendingMessages: 0, diagnostics: [] },
       ],
     }
     render(<TeamAction {...props(actions({ load: () => Promise.resolve({ ok: true, value: busy }) }))} />)
@@ -1606,7 +1611,7 @@ describe('TeamAction', () => {
       members: [
         view.members[0]!,
         { ...view.members[1]!, name: 'code-reviewer' },
-        { id: 'solo-id' as SessionId, name: 'q', role: 'teammate', status: 'idle', diagnostics: [] },
+        { id: 'solo-id' as SessionId, name: 'q', role: 'teammate', status: 'idle', pendingMessages: 0, diagnostics: [] },
       ],
     }
     render(<TeamAction {...props(actions({ load: () => Promise.resolve({ ok: true, value: named }) }))} />)
@@ -1679,5 +1684,32 @@ describe('TeamAction', () => {
       blockedBy: [TASK_2],
       writeScopes: ['src/kept'],
     })
+  })
+
+  it('names a member\'s undelivered mail and says why it is still waiting', async () => {
+    const waiting: TeamView = {
+      ...view,
+      members: [
+        view.members[0]!,
+        { ...view.members[1]!, pendingMessages: 2 },
+      ],
+    }
+    render(<TeamAction {...props(actions({
+      load: () => Promise.resolve({ ok: true, value: waiting }),
+    }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    // The Lead has none, so its card says nothing about mail.
+    const cards = [...document.querySelectorAll('[data-team-member-card]')]
+    fireEvent.focus(cards[0]!)
+    expect(await screen.findByText(zh.assignedTasks)).toBeTruthy()
+    expect(screen.queryByText(zh.pendingMailHint)).toBeNull()
+
+    // The teammate's card names the backlog and what to do about it.
+    fireEvent.blur(cards[0]!)
+    fireEvent.focus(cards[1]!)
+    expect(await screen.findByText(zh.pendingMail.replace('{count}', '2'))).toBeTruthy()
+    expect(screen.getByText(zh.pendingMailHint)).toBeTruthy()
   })
 })

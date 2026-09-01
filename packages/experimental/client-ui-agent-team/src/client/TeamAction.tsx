@@ -936,6 +936,15 @@ export function TeamAction({
                                     <span className={css.detailValue}>
                                       {assigned.length === 0 ? t('noAssignedTasks') : assigned.map(task => task.subject).join(' · ')}
                                     </span>
+                                    {member.pendingMessages > 0 && (
+                                      <>
+                                        <span className={css.scopeWarning}>
+                                          <StateDot state="warning" />
+                                          {t('pendingMail', { count: member.pendingMessages })}
+                                        </span>
+                                        <span className={css.detailValue}>{t('pendingMailHint')}</span>
+                                      </>
+                                    )}
                                     {member.effort !== undefined && (
                                       <MemberEffort effort={member.effort} t={t} />
                                     )}

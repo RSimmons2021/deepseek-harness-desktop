@@ -17,7 +17,7 @@ afterEach(() => {
 
 const SESSION = 'lead' as SessionId
 const view: TeamView = {
-  members: [{ id: SESSION, name: 'lead', role: 'lead', status: 'idle', diagnostics: [] }],
+  members: [{ id: SESSION, name: 'lead', role: 'lead', status: 'idle', pendingMessages: 0, diagnostics: [] }],
   tasks: [],
   capacity: 4,
 }

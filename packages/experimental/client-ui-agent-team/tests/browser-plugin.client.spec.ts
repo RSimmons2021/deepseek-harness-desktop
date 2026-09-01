@@ -68,7 +68,7 @@ async function bench(options: {
   }
   const view = {
     members: [{
-      id: SESSION, name: 'lead', role: 'lead' as const, status: 'idle' as const, diagnostics: [],
+      id: SESSION, name: 'lead', role: 'lead' as const, status: 'idle' as const, pendingMessages: 0, diagnostics: [],
     }], tasks: [task],
   }
   ctx.provide('remote.agentTeams', {
@@ -199,6 +199,7 @@ describe('ui-team browser plugin', () => {
       name: 'lead',
       role: 'lead',
       status: 'idle',
+      pendingMessages: 0,
       diagnostics: [],
     })
     expect(b.navigation).toEqual([])
@@ -255,6 +256,7 @@ describe('ui-team browser plugin', () => {
       name: 'worker',
       role: 'teammate',
       status: 'inactive',
+      pendingMessages: 0,
       diagnostics: [],
     }
     await actions.openTeammate(SESSION, member)
@@ -277,6 +279,7 @@ describe('ui-team browser plugin', () => {
       name: 'worker',
       role: 'teammate',
       status: 'inactive',
+      pendingMessages: 0,
       diagnostics: [],
     })
     expect(b.calls[0]).toEqual({ method: 'agentTeams/view', args: [SESSION] })
@@ -299,6 +302,7 @@ describe('ui-team browser plugin', () => {
       name: 'worker',
       role: 'teammate',
       status: 'inactive',
+      pendingMessages: 0,
       diagnostics: [],
     })
     expect(b.navigation).toEqual([['refresh', SESSION]])

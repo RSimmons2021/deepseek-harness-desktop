@@ -56,6 +56,7 @@ const MEMBER_VIEW_SCHEMA = {
     provider: { type: 'string' },
     context: { type: 'string', enum: ['fresh', 'fork'] },
     model: { type: 'string' },
+    pendingMessages: { type: 'integer', required: true },
     diagnostics: { type: 'array', required: true, items: { type: 'string' } },
   },
 } as const

@@ -90,6 +90,15 @@ export interface TeamMemberView {
   readonly context?: 'fresh' | 'fork'
   readonly model?: string
   readonly effort?: TeamMemberEffort
+  /**
+   * Durable messages addressed to this member that it has not recorded yet.
+   *
+   * A quiet message does not start an idle member, so one sent to a member
+   * between turns sits in its mailbox until something else wakes it. Counting
+   * it here is what makes that visible: `sendMessage` already answers `queued`
+   * rather than `accepted`, but nothing showed the backlog afterwards.
+   */
+  readonly pendingMessages: number
   readonly diagnostics: string[]
 }
 

@@ -904,7 +904,7 @@ describe('Team Remote API', () => {
   it('spawns through the configured provider and preserves spawn rejections', async () => {
     const { ctx, lead } = await setup([])
     const spawn = vi.spyOn(ctx.agentTeams, 'spawnTeammate')
-      .mockResolvedValueOnce({ member: { id: lead.session.id, name: 'writer', role: 'teammate', status: 'idle', diagnostics: [] } })
+      .mockResolvedValueOnce({ member: { id: lead.session.id, name: 'writer', role: 'teammate', status: 'idle', pendingMessages: 0, diagnostics: [] } })
       .mockRejectedValueOnce(new TeamError('name taken', 'TEAM_MEMBER_NAME_TAKEN'))
       .mockRejectedValueOnce(new Error('unexpected spawn failure'))
     const request = { name: 'writer', description: 'drafts', prompt: 'go', context: 'fork' as const }
@@ -1059,6 +1059,33 @@ describe('Team Remote API', () => {
 
     ctx.agentTeams.interrupt(lead, 'editor')
     await waitNoAgent(ctx, editor.member.id)
+  })
+
+  it('counts a member\'s undelivered mail so a quiet message is not invisible', async () => {
+    const { ctx, lead } = await setup(['hang'])
+    const editor = await spawn(ctx, lead, 'editor')
+    expect(ctx.agentTeams.remoteView(lead).members[1]).toMatchObject({
+      name: 'editor', pendingMessages: 0,
+    })
+
+    // A quiet message to a member that is not running stays in its mailbox.
+    ctx.agentTeams.interrupt(lead, 'editor')
+    await waitNoAgent(ctx, editor.member.id)
+    const sent = await ctx.agentTeams.sendMessage(lead, {
+      target: 'editor', content: content('take the next one'), delivery: 'quiet', signal: SIGNAL,
+    })
+    expect(sent.status).toBe('queued')
+    expect(ctx.agentTeams.remoteView(lead).members[1]).toMatchObject({
+      name: 'editor', status: 'inactive', pendingMessages: 1,
+    })
+
+    // A second one accumulates; the Lead's own mailbox stays empty.
+    await ctx.agentTeams.sendMessage(lead, {
+      target: 'editor', content: content('and this'), delivery: 'quiet', signal: SIGNAL,
+    })
+    const members = ctx.agentTeams.remoteView(lead).members
+    expect(members[1]?.pendingMessages).toBe(2)
+    expect(members[0]).toMatchObject({ name: 'lead', pendingMessages: 0 })
   })
 
   it('leases a claimed scope to the member whose in-progress task claims it', async () => {

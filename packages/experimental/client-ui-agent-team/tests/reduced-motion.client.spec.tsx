@@ -27,8 +27,8 @@ const SESSION = 'lead' as SessionId
 const WORKER = 'worker-id' as SessionId
 const view: TeamView = {
   members: [
-    { id: SESSION, name: 'lead', role: 'lead', status: 'idle', diagnostics: [] },
-    { id: WORKER, name: 'worker', role: 'teammate', status: 'idle', diagnostics: [] },
+    { id: SESSION, name: 'lead', role: 'lead', status: 'idle', pendingMessages: 0, diagnostics: [] },
+    { id: WORKER, name: 'worker', role: 'teammate', status: 'idle', pendingMessages: 0, diagnostics: [] },
   ],
   tasks: [{
     id: 'task-1' as never,
