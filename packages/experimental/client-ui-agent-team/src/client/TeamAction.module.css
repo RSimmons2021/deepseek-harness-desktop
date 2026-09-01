@@ -755,14 +755,23 @@
   color: var(--team-ink);
 }
 
-.notice {
-  margin: 0 clamp(18px, 2.4vw, 34px) 10px;
+/*
+ * One acknowledgement for an action the roster cannot show: a queued message
+ * and an interrupt that lands between reads. Height is animated on both edges,
+ * so the text clips while the box travels rather than overrunning the roster.
+ */
+.acknowledgement {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  margin: 0 clamp(18px, 2.4vw, 34px);
   padding: 9px 13px;
-  border: 1px solid var(--team-stroke);
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 30%, var(--team-stroke));
   border-radius: 11px;
   background: color-mix(in srgb, var(--team-surface-strong) 70%, transparent);
   color: var(--team-ink-muted);
   font-size: 12px;
+  gap: 8px;
 }
 
 .scopeWarning {
@@ -995,6 +1004,37 @@
 
 .taskPending {
   border-color: color-mix(in srgb, var(--team-orange) 34%, transparent);
+}
+
+.task {
+  position: relative;
+}
+
+/*
+ * Completing a task is the thing the board exists to produce, and the status
+ * word changing is the whole of what it otherwise looks like. This marks the
+ * card once, on the tier the ladder gives a milestone: heavier than the silent
+ * reversible edits around it, lighter than the delete that asks first.
+ */
+.task::after {
+  position: absolute;
+  border: 1px solid var(--dsw-alias-state-success-primary);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent);
+  content: '';
+  inset: -1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.task[data-team-settled]::after {
+  animation: task-settled 1400ms ease-out;
+}
+
+@keyframes task-settled {
+  0% { opacity: 0; }
+  14% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 .taskTitle span {
@@ -1326,6 +1366,12 @@
   .refreshing svg {
     animation: none;
   }
+
+  .task[data-team-settled]::after,
+  .activityRow[data-team-recorded]::before {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 @keyframes team-refresh {
@@ -1371,6 +1417,30 @@
 
 .activityRow:nth-child(odd) {
   background: color-mix(in srgb, var(--team-ink) 4%, transparent);
+}
+
+.activityRow {
+  position: relative;
+}
+
+.activityRow::before {
+  position: absolute;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--team-orange) 18%, transparent);
+  content: '';
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.activityRow[data-team-recorded]::before {
+  animation: activity-recorded 1400ms ease-out;
+}
+
+@keyframes activity-recorded {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /*

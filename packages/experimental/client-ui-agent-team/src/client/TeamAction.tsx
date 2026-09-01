@@ -163,11 +163,36 @@ const ROSTER_MIN_TILES = 4
  */
 const COLLAPSED_DETAILS = { opacity: 0, height: 0, marginTop: 0, paddingTop: 0 } as const
 
+/**
+ * The acknowledgement's closed geometry. It sits above the roster, so opening
+ * and closing by height moves the surface under it rather than displacing it in
+ * one frame; the arrival and the departure are the same motion reversed.
+ */
+const COLLAPSED_NOTICE = { opacity: 0, height: 0, marginBottom: 0 } as const
+
 /** Timeline entries kept on screen; the service caps one read at 200. */
 const ACTIVITY_LIMIT = 40
 
 /** Tail lines shown on one expanded card; the service caps one read at 50. */
 const TAIL_LIMIT = 6
+
+/**
+ * How long one acknowledgement stays on screen.
+ *
+ * It reports an action whose effect is not otherwise visible, so it has to
+ * leave on its own: a banner that never clears stops being read, and the next
+ * one to arrive lands in a slot the reader has already tuned out.
+ */
+const NOTICE_HOLD_MS = 4200
+
+/**
+ * How long a card carries the mark for work that just landed.
+ *
+ * Long enough to catch the eye of someone who was looking elsewhere on the
+ * surface, short enough that the mark still means "just now" rather than
+ * "at some point".
+ */
+const ARRIVAL_MARK_MS = 1400
 
 /** Board lanes, in the order an operator reads them: now, next, waiting, over. */
 const LANE_ORDER = ['laneActive', 'laneReady', 'laneBlocked', 'laneDone'] as const
@@ -336,7 +361,17 @@ export function TeamAction({
   const [interruptingMemberId, setInterruptingMemberId] = useState<SessionId | null>(null)
   // Acknowledgement for the two actions whose effect is not otherwise visible
   // on the card: an interrupt that lands between polls, and a queued message.
-  const [notice, setNotice] = useState<string | null>(null)
+  // Boxed so repeating one restarts its hold: the value changes identity even
+  // when the sentence does not.
+  const [notice, setNotice] = useState<{ readonly text: string } | null>(null)
+  // Tasks whose completion landed while this surface was watching, and timeline
+  // entries recorded since it last read. Both are seeded from the first read so
+  // that opening a workspace marks nothing: everything already there is old.
+  const [justSettled, setJustSettled] = useState<ReadonlySet<string>>(() => new Set())
+  const [justRecorded, setJustRecorded] = useState<ReadonlySet<number>>(() => new Set())
+  const [historyRead, setHistoryRead] = useState(false)
+  const settledSeen = useRef<ReadonlySet<string> | null>(null)
+  const recordedSeen = useRef<number | null>(null)
   const reduceMotion = useReducedMotion()
   const sessionRef = useRef(sessionId)
   const refreshGeneration = useRef(0)
@@ -363,7 +398,49 @@ export function TeamAction({
     setMessagePending(false)
     setInterruptingMemberId(null)
     setNotice(null)
+    setJustSettled(new Set())
+    setJustRecorded(new Set())
+    setHistoryRead(false)
+    settledSeen.current = null
+    recordedSeen.current = null
   }, [sessionId, standalone])
+
+  useEffect(() => {
+    if (notice === null) return
+    const clearing = setTimeout(() => { setNotice(null) }, NOTICE_HOLD_MS)
+    return () => { clearTimeout(clearing) }
+  }, [notice])
+
+  // Completing a task is what the board exists to produce, and the only trace
+  // it otherwise leaves is a status word changing and the card moving lane.
+  useEffect(() => {
+    if (view === null) return
+    const completed = new Set(view.tasks.filter(task => task.status === 'completed').map(task => String(task.id)))
+    const seen = settledSeen.current
+    settledSeen.current = completed
+    if (seen === null) return
+    const landed = [...completed].filter(id => !seen.has(id))
+    if (landed.length === 0) return
+    setJustSettled(new Set(landed))
+    const clearing = setTimeout(() => { setJustSettled(new Set()) }, ARRIVAL_MARK_MS)
+    return () => { clearTimeout(clearing) }
+  }, [view])
+
+  // The same completion also lands in the record. Marking the row that arrived
+  // is what says the record is where the action went, rather than leaving the
+  // reader to find it among rows that all look equally recent.
+  useEffect(() => {
+    if (!historyRead) return
+    const seen = recordedSeen.current
+    const highest = history.reduce((top, entry) => Math.max(top, entry.seq), 0)
+    recordedSeen.current = highest
+    if (seen === null) return
+    const landed = history.filter(entry => entry.seq > seen).map(entry => entry.seq)
+    if (landed.length === 0) return
+    setJustRecorded(new Set(landed))
+    const clearing = setTimeout(() => { setJustRecorded(new Set()) }, ARRIVAL_MARK_MS)
+    return () => { clearTimeout(clearing) }
+  }, [history, historyRead])
 
   useEffect(() => {
     if (!open) return
@@ -453,7 +530,9 @@ export function TeamAction({
     const reading = new AbortController()
     const stopped = (): boolean => reading.signal.aborted
     void activity(requestedSession, ACTIVITY_LIMIT).then((recorded) => {
-      if (!stopped() && recorded.ok) setHistory(recorded.value)
+      if (stopped()) return
+      if (recorded.ok) setHistory(recorded.value)
+      setHistoryRead(true)
     })
     return () => { reading.abort() }
   }, [activity, sessionId, view])
@@ -505,7 +584,7 @@ export function TeamAction({
         return
       }
       setError(null)
-      setNotice(t('messageQueued'))
+      setNotice({ text: t('messageQueued') })
       setMessaging(null)
       setMessageDraft(EMPTY_MESSAGE)
       await refresh()
@@ -529,7 +608,7 @@ export function TeamAction({
         return
       }
       setError(null)
-      setNotice(t('interrupted'))
+      setNotice({ text: t('interrupted') })
       await refresh()
     } finally {
       if (sessionRef.current === requestedSession) setInterruptingMemberId(null)
@@ -681,6 +760,15 @@ export function TeamAction({
   const detailsTransition: Transition = reduceMotion
     ? { duration: 0.01 }
     : { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }
+  // The acknowledgement enters on ease-out and leaves on ease-in over the
+  // shorter span, so arriving reads as something appearing and leaving reads
+  // as decisive rather than as the same motion played backwards.
+  const noticeTransition: Transition = reduceMotion
+    ? { duration: 0.01 }
+    : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }
+  const noticeExit = reduceMotion
+    ? { opacity: 0 }
+    : { ...COLLAPSED_NOTICE, transition: { duration: 0.14, ease: [0.4, 0, 1, 1] } as Transition }
 
   return (
     <div className={css.root} data-team-action data-team-standalone={standalone || undefined}>
@@ -737,6 +825,7 @@ export function TeamAction({
                         type="button"
                         className={css.iconButton}
                         aria-label={t(colorScheme === 'dark' ? 'toLightTheme' : 'toDarkTheme')}
+                        title={t(colorScheme === 'dark' ? 'toLightTheme' : 'toDarkTheme')}
                         onClick={toggleTheme}
                       >
                         {colorScheme === 'dark' ? <IconLightOutline16 size={14} /> : <IconDarkOutline16 size={14} />}
@@ -745,6 +834,7 @@ export function TeamAction({
                         type="button"
                         className={css.iconButton}
                         aria-label={t(ambientPaused ? 'resumeMotion' : 'pauseMotion')}
+                        title={t(ambientPaused ? 'resumeMotion' : 'pauseMotion')}
                         aria-pressed={ambientPaused}
                         onClick={() => { setAmbientPaused(value => !value) }}
                       >
@@ -758,12 +848,13 @@ export function TeamAction({
                         type="button"
                         className={loading ? `${css.iconButton} ${css.refreshing}` : css.iconButton}
                         aria-label={t(loading ? 'loading' : 'refresh')}
+                        title={t('refresh')}
                         aria-busy={loading || undefined}
                         onClick={() => { void refresh() }}
                       >
                         <IconRefreshOutline14 />
                       </button>
-                      <button type="button" className={css.iconButton} aria-label={t('close')} onClick={() => { setOpen(false) }}>
+                      <button type="button" className={css.iconButton} aria-label={t('close')} title={t('close')} onClick={() => { setOpen(false) }}>
                         <IconCloseOutline16 size={14} />
                       </button>
                     </>
@@ -773,9 +864,21 @@ export function TeamAction({
           </header>
           <div className={css.workspaceBody}>
             {error !== null && <div className={css.error} role="alert">{error}</div>}
-            {error === null && notice !== null && (
-              <div className={css.notice} role="status">{notice}</div>
-            )}
+            <AnimatePresence initial={false}>
+              {error === null && notice !== null && (
+                <motion.div
+                  className={css.acknowledgement}
+                  role="status"
+                  initial={reduceMotion ? { opacity: 0 } : COLLAPSED_NOTICE}
+                  animate={{ opacity: 1, height: 'auto', marginBottom: 10 }}
+                  exit={noticeExit}
+                  transition={noticeTransition}
+                >
+                  <StateDot state="done" />
+                  {notice.text}
+                </motion.div>
+              )}
+            </AnimatePresence>
             {loading && view === null && (
               <div className={css.loading}><Loader variant="dots" text={t('loading')} /></div>
             )}
@@ -1053,6 +1156,7 @@ export function TeamAction({
                             <article
                               key={task.id}
                               className={pendingTasks.has(task.id) ? `${css.task} ${css.taskPending}` : css.task}
+                              data-team-settled={justSettled.has(String(task.id)) || undefined}
                               aria-busy={pendingTasks.has(task.id) || undefined}
                             >
                               <div className={css.taskTitle}>
@@ -1164,13 +1268,18 @@ export function TeamAction({
                       <h3 id="agent-team-activity-heading">{t('activityTitle')}</h3>
                     </div>
                   </div>
-                  {history.length === 0 && <div className={css.notice}>{t('activityEmpty')}</div>}
+                  {!historyRead && <div className={css.notice}><Loader variant="dots" text={t('loading')} /></div>}
+                  {historyRead && history.length === 0 && <div className={css.notice}>{t('activityEmpty')}</div>}
                   {history.length > 0 && (
                     <ol className={css.activity} data-team-activity>
                       {history.map((entry) => {
                         const stateKey = activityStateKey(entry)
                         return (
-                          <li key={entry.seq} className={css.activityRow}>
+                          <li
+                            key={entry.seq}
+                            className={css.activityRow}
+                            data-team-recorded={justRecorded.has(entry.seq) || undefined}
+                          >
                             <time className={css.activityTime} dateTime={new Date(entry.time).toISOString()}>
                               {formatRecordedTime(entry.time)}
                             </time>

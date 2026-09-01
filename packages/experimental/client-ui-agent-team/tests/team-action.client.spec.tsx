@@ -75,6 +75,13 @@ const view: TeamView = {
 /** A board with something to depend on: a task cannot wait for itself. */
 const pairedView: TeamView = { ...view, tasks: [task, blocker] }
 
+/** The recorded timeline; the lane headings reuse its status words. */
+function timeline(): HTMLElement {
+  const recorded = document.querySelector<HTMLElement>('[data-team-activity]')
+  if (recorded === null) throw new Error('the timeline did not render')
+  return recorded
+}
+
 /** The board card for one task, so a two-task board stays unambiguous. */
 function taskCard(subject: string): HTMLElement {
   const card = screen.getByText(subject).closest('article')
@@ -1186,6 +1193,87 @@ describe('TeamAction', () => {
     expect(await screen.findByText(zh.activityEmpty)).toBeTruthy()
     expect(document.querySelector('[data-team-activity]')).toBeNull()
   })
+
+  it('waits for the first read before saying the Team has done nothing', async () => {
+    const first = Promise.withResolvers<TeamActionResult<TeamActivityEntry[]>>()
+    render(<TeamAction {...props(actions({ activity: () => first.promise }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    // The claim is about a read that has not answered, so it is not made yet.
+    expect(screen.queryByText(zh.activityEmpty)).toBeNull()
+    expect(screen.getByText(zh.loading)).toBeTruthy()
+
+    first.resolve({ ok: true, value: [] })
+    expect(await screen.findByText(zh.activityEmpty)).toBeTruthy()
+  })
+
+  it('marks the timeline rows recorded since the last read', async () => {
+    const at = 1_700_000_000_000
+    const started: TeamActivityEntry = { seq: 1, time: at, kind: 'task', subject: 'Implement runtime', state: 'in_progress' }
+    const finished: TeamActivityEntry = { seq: 2, time: at, kind: 'task', subject: 'Implement runtime', state: 'completed' }
+    const activity = vi.fn()
+      .mockResolvedValueOnce({ ok: true, value: [started] })
+      .mockResolvedValue({ ok: true, value: [finished, started] })
+    // A refresh has to answer with its own object or React keeps the view it
+    // already holds, and the history follows the view rather than the click.
+    const load = () => Promise.resolve({ ok: true as const, value: { ...view } })
+    render(<TeamAction {...props(actions({ activity, load }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+
+    await waitFor(() => { expect(within(timeline()).getByText(zh['status.in_progress'])).toBeTruthy() })
+    // The first read is where the reader starts, so none of it counts as new.
+    expect(document.querySelectorAll('[data-team-recorded]').length).toBe(0)
+
+    fireEvent.click(screen.getByRole('button', { name: zh.refresh }))
+    await waitFor(() => {
+      const marked = [...timeline().querySelectorAll('[data-team-recorded]')]
+      expect(marked.map(row => row.textContent)).toEqual([expect.stringContaining(zh['status.completed'])])
+    })
+    // The mark means "just now", so it lets go rather than accumulating.
+    await waitFor(() => {
+      expect(timeline().querySelectorAll('[data-team-recorded]')).toHaveLength(0)
+    }, { timeout: 4000 })
+  }, 8000)
+
+  it('marks the completion that just landed and leaves the ones already done alone', async () => {
+    const done: TeamTask = { ...blocker, status: 'completed' }
+    const running: TeamTask = { ...task, writeScopeWarnings: [] }
+    const settled: TeamTask = { ...running, revision: 2, status: 'completed' }
+    const load = vi.fn()
+      .mockResolvedValueOnce({ ok: true, value: { ...view, tasks: [running, done] } })
+      .mockResolvedValue({ ok: true, value: { ...view, tasks: [settled, done] } })
+    const updateTask = () => Promise.resolve(taskSuccess(settled))
+    render(<TeamAction {...props(actions({ load, updateTask }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    // Opening a workspace marks nothing: what is already finished is not news.
+    expect(taskCard('Publish the notes').getAttribute('data-team-settled')).toBeNull()
+
+    fireEvent.click(within(taskCard('Implement runtime')).getByRole('button', { name: zh.complete }))
+    await waitFor(() => {
+      expect(taskCard('Implement runtime').getAttribute('data-team-settled')).toBe('true')
+    })
+    expect(taskCard('Publish the notes').getAttribute('data-team-settled')).toBeNull()
+    await waitFor(() => {
+      expect(taskCard('Implement runtime').getAttribute('data-team-settled')).toBeNull()
+    }, { timeout: 4000 })
+  }, 8000)
+
+  it('clears the acknowledgement on its own so the next one still reads as news', async () => {
+    render(<TeamAction {...props(actions())} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+
+    fireEvent.click(screen.getByRole('button', { name: zh.message }))
+    fireEvent.change(screen.getByPlaceholderText(zh.messageText), { target: { value: 'take task-1' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.send }))
+    expect(await screen.findByText(zh.messageQueued)).toBeTruthy()
+
+    // Waited out rather than faked: faking the clock or the frame callbacks
+    // leaves motion's time base offset once real timers come back, and every
+    // exit animation in the tests after this one stops finishing.
+    await waitFor(() => { expect(screen.queryByText(zh.messageQueued)).toBeNull() }, { timeout: 8000 })
+  }, 12000)
 
   it('keeps the board when the history is refused and drops history from a past session', async () => {
     // A refused history leaves the board it accompanies alone: the roster and

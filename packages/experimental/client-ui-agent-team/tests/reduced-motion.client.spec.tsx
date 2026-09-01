@@ -98,4 +98,23 @@ describe('reduced motion', () => {
     // The tail's rows are present without their staged reveal.
     expect(document.querySelectorAll('[data-team-tail] > li')).toHaveLength(2)
   })
+
+  it('acknowledges a queued message without spatial animation', async () => {
+    const surface = {
+      ...props(SESSION),
+      sendMessage: () => Promise.resolve({
+        ok: true,
+        value: { ok: true, value: { messageId: 'message-1', status: 'accepted' } },
+      }),
+    } as unknown as TeamSurfaceProps
+    render(<TeamAction {...surface} sessionId={SESSION} standalone />)
+    expect(await screen.findByText('Implement runtime')).toBeTruthy()
+
+    // The acknowledgement opens and closes by height for everyone else; here it
+    // simply appears, so the sentence still arrives without the box travelling.
+    fireEvent.click(screen.getByRole('button', { name: zh.message }))
+    fireEvent.change(screen.getByPlaceholderText(zh.messageText), { target: { value: 'take task-1' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.send }))
+    expect(await screen.findByText(zh.messageQueued)).toBeTruthy()
+  })
 })
