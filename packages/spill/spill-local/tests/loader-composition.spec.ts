@@ -31,8 +31,11 @@ describe('spill-local real Loader composition through cordis.yml', () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-spill-loader-'))
     const oldDir = sessionDir(root, 'old-session')
     const freshDir = sessionDir(root, 'fresh-session')
-    await mkdir(oldDir, { recursive: true })
-    await mkdir(freshDir, { recursive: true })
+    // Private, as the store creates them: the sweep refuses a session directory
+    // another local user could write into, so a fixture built with the ambient
+    // umask would test the umask rather than the sweep.
+    await mkdir(oldDir, { recursive: true, mode: 0o700 })
+    await mkdir(freshDir, { recursive: true, mode: 0o700 })
     const old = join(oldDir, 'old.txt')
     const fresh = join(freshDir, 'fresh.txt')
     await writeFile(old, 'old')
