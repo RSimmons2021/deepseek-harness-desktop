@@ -18,9 +18,13 @@ Two smaller defects sat underneath. `.notice` was declared twice in the same sty
 
 **Feedback weight matches consequence.** A completion that lands while the workspace is open marks its card once, and the row it produced in the record is marked at the same time. That pairing is the point: the card confirms the action, and the record says where it went. Nothing is marked when a workspace opens — both marks seed from the first read, so what was already finished is not news. Both marks are transient, because each says "just now"; a mark that stayed would mean "at some point", which the timestamps already say better.
 
-**The acknowledgement has an arc.** It arrives on ease-out over 200ms and leaves on ease-in over 140ms, holds for 4.2 seconds, and restarts its hold when a repeat announcement replaces it. Height carries both edges, so the surface below moves under it rather than being displaced in a frame.
+**The acknowledgement has an arc, and its box never leaves.** It opens over 200ms, holds 4.2 seconds, and closes on the same curve, restarting its hold when a repeat announcement replaces it. Height carries both edges, so the surface below moves under it rather than being displaced in a frame. The box itself is always mounted and animates between a closed and an open geometry; only the sentence is conditional. Presenting and retiring it instead — the obvious `AnimatePresence` shape — ran the exit to its target and then never released the node, leaving a box above the roster for the rest of the session. Nothing can stall here because nothing waits to unmount.
+
+**A collapsing `content-box` has to give up its padding and rules too.** `height: 0` alone still leaves 9px of padding on each edge and both 1px borders standing, which measures as an empty bar rather than a closed box.
 
 **A claim waits for the answer it is about.** The timeline reports that it is reading until its first read comes back, and only then says the Team has done nothing.
+
+**A mark's hold belongs to the mark, not to the read that produced it.** Tying the timer to the effect that computes arrivals looked right and was wrong: React runs that effect's cleanup before every re-run, so the next view or history carrying nothing new cancelled the hold and then returned early without replacing it. The mark stayed on for good. Each expiry is now its own effect keyed on the marked set, which a read carrying nothing new does not touch.
 
 **Marks are painted, never laid out.** Each is an absolutely positioned overlay animating opacity alone, inset past the element's own border. Nothing needs `overflow: hidden`, so no focus ring is clipped to make a flash possible.
 
@@ -43,5 +47,7 @@ The acknowledgement's hold is proven by waiting it out in a test rather than by 
 Splitting `.notice` in two removes a duplicate selector: the acknowledgement is its own rule, and the two quiet empty-state lines keep the original.
 
 ## Testing
+
+Live measurement found all three defects; no unit test did. The stuck mark needs the second view that cancels the hold, which a fixture answering one read cannot produce — both mark tests now deliver a later read carrying nothing new, and both fail against the previous code. The stalled exit and the uncollapsed padding do not reproduce in jsdom at all, which renders no layout and retires the presented child cleanly; the live run is the only gate for those, and the mounted box exists so that there is nothing left to stall.
 
 Client tests cover the acknowledgement arriving and leaving on its own; a completion that lands while watching marking its card while one already finished stays unmarked, and the mark then letting go; a timeline row recorded since the last read being marked while a first read marks nothing, and that mark letting go; the timeline withholding its empty claim until the read answers; and the acknowledgement under reduced motion. Lane headings reuse the status words, so the timeline assertions scope to the record rather than the page.

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-01-team-workspace-feedback-ladder.md
-2026-09-01-team-workspace-feedback-ladder.md: 83ccdf51be1544806bb8bc3dc9214577ad1bf5a2
-2026-09-01-team-workspace-feedback-ladder.zh.md: 3bd2d9a505da279bbc228362c5b5034c0d5af4da
+2026-09-01-team-workspace-feedback-ladder.md: 919e073f930e343be24dc04b856b567bc8c0329e
+2026-09-01-team-workspace-feedback-ladder.zh.md: 11d3834655a448d707a637b6b64af55cf42fe06e

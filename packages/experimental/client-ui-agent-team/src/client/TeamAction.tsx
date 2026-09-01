@@ -164,11 +164,38 @@ const ROSTER_MIN_TILES = 4
 const COLLAPSED_DETAILS = { opacity: 0, height: 0, marginTop: 0, paddingTop: 0 } as const
 
 /**
- * The acknowledgement's closed geometry. It sits above the roster, so opening
- * and closing by height moves the surface under it rather than displacing it in
- * one frame; the arrival and the departure are the same motion reversed.
+ * The acknowledgement's closed geometry, which is also its resting geometry:
+ * the box is always mounted and opens on an announcement rather than being
+ * presented and retired. Presenting it stalled — the exit ran to this target
+ * and the node was never released, leaving a box above the roster for the life
+ * of the session — and nothing can stall here, because nothing waits to unmount.
+ *
+ * It sits above the roster, so opening and closing by height moves the surface
+ * under it rather than displacing it in one frame. The padding and the
+ * horizontal rules collapse with the height because the box is `content-box`:
+ * `height: 0` alone still leaves the padding and both borders standing, which
+ * measures as an empty bar rather than a closed box.
  */
-const COLLAPSED_NOTICE = { opacity: 0, height: 0, marginBottom: 0 } as const
+const COLLAPSED_NOTICE = {
+  opacity: 0,
+  height: 0,
+  marginBottom: 0,
+  paddingTop: 0,
+  paddingBottom: 0,
+  borderTopWidth: 0,
+  borderBottomWidth: 0,
+} as const
+
+/** The acknowledgement's open geometry, matching the CSS rule it opens to. */
+const OPEN_NOTICE = {
+  opacity: 1,
+  height: 'auto',
+  marginBottom: 10,
+  paddingTop: 9,
+  paddingBottom: 9,
+  borderTopWidth: 1,
+  borderBottomWidth: 1,
+} as const
 
 /** Timeline entries kept on screen; the service caps one read at 200. */
 const ACTIVITY_LIMIT = 40
@@ -420,10 +447,7 @@ export function TeamAction({
     settledSeen.current = completed
     if (seen === null) return
     const landed = [...completed].filter(id => !seen.has(id))
-    if (landed.length === 0) return
-    setJustSettled(new Set(landed))
-    const clearing = setTimeout(() => { setJustSettled(new Set()) }, ARRIVAL_MARK_MS)
-    return () => { clearTimeout(clearing) }
+    if (landed.length > 0) setJustSettled(new Set(landed))
   }, [view])
 
   // The same completion also lands in the record. Marking the row that arrived
@@ -436,11 +460,24 @@ export function TeamAction({
     recordedSeen.current = highest
     if (seen === null) return
     const landed = history.filter(entry => entry.seq > seen).map(entry => entry.seq)
-    if (landed.length === 0) return
-    setJustRecorded(new Set(landed))
+    if (landed.length > 0) setJustRecorded(new Set(landed))
+  }, [history, historyRead])
+
+  // Each mark's hold belongs to the mark, not to the read that produced it. A
+  // later view or history that carries nothing new leaves the marked set alone,
+  // so these do not re-run and the hold survives; tying the timer to that read
+  // instead let its cleanup cancel the hold and leave the mark on for good.
+  useEffect(() => {
+    if (justSettled.size === 0) return
+    const clearing = setTimeout(() => { setJustSettled(new Set()) }, ARRIVAL_MARK_MS)
+    return () => { clearTimeout(clearing) }
+  }, [justSettled])
+
+  useEffect(() => {
+    if (justRecorded.size === 0) return
     const clearing = setTimeout(() => { setJustRecorded(new Set()) }, ARRIVAL_MARK_MS)
     return () => { clearTimeout(clearing) }
-  }, [history, historyRead])
+  }, [justRecorded])
 
   useEffect(() => {
     if (!open) return
@@ -760,15 +797,12 @@ export function TeamAction({
   const detailsTransition: Transition = reduceMotion
     ? { duration: 0.01 }
     : { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }
-  // The acknowledgement enters on ease-out and leaves on ease-in over the
-  // shorter span, so arriving reads as something appearing and leaving reads
-  // as decisive rather than as the same motion played backwards.
+  // One curve carries both edges.
   const noticeTransition: Transition = reduceMotion
     ? { duration: 0.01 }
     : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }
-  const noticeExit = reduceMotion
-    ? { opacity: 0 }
-    : { ...COLLAPSED_NOTICE, transition: { duration: 0.14, ease: [0.4, 0, 1, 1] } as Transition }
+  // The sentence, or nothing. The box itself stays mounted either way.
+  const announced = error === null && notice !== null ? notice.text : null
 
   return (
     <div className={css.root} data-team-action data-team-standalone={standalone || undefined}>
@@ -864,21 +898,20 @@ export function TeamAction({
           </header>
           <div className={css.workspaceBody}>
             {error !== null && <div className={css.error} role="alert">{error}</div>}
-            <AnimatePresence initial={false}>
-              {error === null && notice !== null && (
-                <motion.div
-                  className={css.acknowledgement}
-                  role="status"
-                  initial={reduceMotion ? { opacity: 0 } : COLLAPSED_NOTICE}
-                  animate={{ opacity: 1, height: 'auto', marginBottom: 10 }}
-                  exit={noticeExit}
-                  transition={noticeTransition}
-                >
+            <motion.div
+              className={css.acknowledgement}
+              role="status"
+              initial={false}
+              animate={announced === null ? COLLAPSED_NOTICE : OPEN_NOTICE}
+              transition={noticeTransition}
+            >
+              {announced !== null && (
+                <>
                   <StateDot state="done" />
-                  {notice.text}
-                </motion.div>
+                  {announced}
+                </>
               )}
-            </AnimatePresence>
+            </motion.div>
             {loading && view === null && (
               <div className={css.loading}><Loader variant="dots" text={t('loading')} /></div>
             )}

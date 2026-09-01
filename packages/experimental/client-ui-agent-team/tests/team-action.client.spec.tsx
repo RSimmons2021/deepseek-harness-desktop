@@ -1211,9 +1211,11 @@ describe('TeamAction', () => {
     const at = 1_700_000_000_000
     const started: TeamActivityEntry = { seq: 1, time: at, kind: 'task', subject: 'Implement runtime', state: 'in_progress' }
     const finished: TeamActivityEntry = { seq: 2, time: at, kind: 'task', subject: 'Implement runtime', state: 'completed' }
+    // Each read answers with its own array, the way the transport does: an
+    // identical reference would leave React holding the history it already has.
     const activity = vi.fn()
-      .mockResolvedValueOnce({ ok: true, value: [started] })
-      .mockResolvedValue({ ok: true, value: [finished, started] })
+      .mockImplementationOnce(() => Promise.resolve({ ok: true, value: [started] }))
+      .mockImplementation(() => Promise.resolve({ ok: true, value: [finished, started] }))
     // A refresh has to answer with its own object or React keeps the view it
     // already holds, and the history follows the view rather than the click.
     const load = () => Promise.resolve({ ok: true as const, value: { ...view } })
@@ -1229,7 +1231,9 @@ describe('TeamAction', () => {
       const marked = [...timeline().querySelectorAll('[data-team-recorded]')]
       expect(marked.map(row => row.textContent)).toEqual([expect.stringContaining(zh['status.completed'])])
     })
-    // The mark means "just now", so it lets go rather than accumulating.
+    // A later read carrying nothing new must not extend the mark, and must not
+    // cancel its hold either: the mark means "just now", so it lets go.
+    fireEvent.click(screen.getByRole('button', { name: zh.refresh }))
     await waitFor(() => {
       expect(timeline().querySelectorAll('[data-team-recorded]')).toHaveLength(0)
     }, { timeout: 4000 })
@@ -1240,8 +1244,8 @@ describe('TeamAction', () => {
     const running: TeamTask = { ...task, writeScopeWarnings: [] }
     const settled: TeamTask = { ...running, revision: 2, status: 'completed' }
     const load = vi.fn()
-      .mockResolvedValueOnce({ ok: true, value: { ...view, tasks: [running, done] } })
-      .mockResolvedValue({ ok: true, value: { ...view, tasks: [settled, done] } })
+      .mockImplementationOnce(() => Promise.resolve({ ok: true, value: { ...view, tasks: [running, done] } }))
+      .mockImplementation(() => Promise.resolve({ ok: true, value: { ...view, tasks: [settled, done] } }))
     const updateTask = () => Promise.resolve(taskSuccess(settled))
     render(<TeamAction {...props(actions({ load, updateTask }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
@@ -1254,6 +1258,11 @@ describe('TeamAction', () => {
       expect(taskCard('Implement runtime').getAttribute('data-team-settled')).toBe('true')
     })
     expect(taskCard('Publish the notes').getAttribute('data-team-settled')).toBeNull()
+
+    // The board keeps arriving while the mark is up — the followed Team reloads
+    // on its own. A view carrying no new completion leaves the mark alone, and
+    // must not take its hold with it.
+    fireEvent.click(screen.getByRole('button', { name: zh.refresh }))
     await waitFor(() => {
       expect(taskCard('Implement runtime').getAttribute('data-team-settled')).toBeNull()
     }, { timeout: 4000 })
