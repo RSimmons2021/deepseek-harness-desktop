@@ -1,0 +1,59 @@
+/*
+ * Handles are frame children rather than column children, because a column
+ * clips its own overflow: each is an 8px hit strip centred on a column border
+ * by an inline `left`, above the column content. The visible pill is drawn only
+ * where a border alone would not read as draggable.
+ */
+.handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  margin-left: -4px;
+  cursor: col-resize;
+  touch-action: none;
+  /* Rides the same curve as the tracks so the strip stays on the moving border
+     during a collapse or expand; the frame pauses it while dragging. */
+  transition: left var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+[data-dragging] .handle {
+  transition: none;
+}
+
+.handle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 32px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 10px;
+  background: var(--dsw-alias-button-floating-fill);
+  content: '';
+  /* The pill is an affordance, not a divider: it appears on approach and
+     stays for the gesture, so a resting frame shows only its own borders. */
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    background var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+.handle:hover::after,
+.handle[data-dragging]::after {
+  opacity: 1;
+}
+
+.handle[data-dragging]::after {
+  background: var(--dsw-alias-button-floating-fill-hover, var(--dsw-alias-button-floating-fill));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .handle,
+  .handle::after {
+    transition: none;
+  }
+}

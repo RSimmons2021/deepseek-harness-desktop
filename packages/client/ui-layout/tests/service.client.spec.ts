@@ -5,6 +5,7 @@ import type { PanelActions } from '@deepseek-ai/dsh-client-ui-layout/src/client/
 function fakePanels(): PanelActions {
   return {
     setSidebar: vi.fn(),
+    setConversation: vi.fn(),
     setDetails: vi.fn(),
     toggleSidebar: vi.fn(),
     setNarrow: vi.fn(),

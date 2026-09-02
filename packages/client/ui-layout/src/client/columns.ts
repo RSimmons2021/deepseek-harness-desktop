@@ -38,6 +38,23 @@ export const DETAILS_MAX = 520
 /** Details width before any user drag. */
 export const DETAILS_DEFAULT = 360
 
+/*
+ * Desktop geometry. The window carries a fourth track — the Team workspace —
+ * and the workspace is the flexible one: the sidebar, the conversation, and the
+ * details column each hold a width the user set, and the workspace absorbs
+ * whatever the window has left. That is what makes the hero grow when the
+ * window does without anyone dragging it.
+ */
+
+/** Conversation drag clamp floor. */
+export const CONVERSATION_MIN = 320
+/** Conversation drag clamp ceiling. */
+export const CONVERSATION_MAX = 720
+/** Conversation width before any user drag. */
+export const CONVERSATION_DEFAULT = 460
+/** Workspace floor; the desktop concession chain gives it up only as a last resort. */
+export const WORKSPACE_MIN = 420
+
 /**
  * Clamp a panel width into its contract range.
  * @param px - requested width.
@@ -74,4 +91,52 @@ export function computeColumns(viewport: number, sidebar: number, details: numbe
   // Step 3: auto-close details (derived — preferences untouched); center
   // absorbs any remaining deficit (may drop below CENTER_MIN).
   return { sidebar: s, center: Math.max(0, viewport - s), details: 0 }
+}
+
+/** Resolved desktop widths; `workspace` is the remainder and may fall below its floor. */
+export interface DesktopColumns { sidebar: number; workspace: number; conversation: number; details: number }
+
+/**
+ * Solve the four desktop tracks for one window frame.
+ *
+ * Pure, and a function of (viewport, preferences) only, so re-widening the
+ * window recovers without hysteresis. The concession order is fixed: the
+ * details column gives up its width first because it is a companion to
+ * whatever is selected, then the conversation shrinks toward its own floor,
+ * then details closes outright, and only then does the workspace go under its
+ * floor. Preferences are never rewritten, so nothing the user dragged is lost
+ * to a window that was briefly too small.
+ * @param viewport - available frame width in px.
+ * @param sidebar - sidebar width preference in px (0 = the collapsed rail).
+ * @param conversation - conversation width preference in px (0 = closed).
+ * @param details - details width preference in px (0 = closed).
+ * @returns resolved widths; a zero track is visually closed, never unmounted.
+ */
+export function computeDesktopColumns(
+  viewport: number,
+  sidebar: number,
+  conversation: number,
+  details: number,
+): DesktopColumns {
+  const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
+  const c0 = conversation === 0 ? 0 : clampWidth(conversation, CONVERSATION_MIN, CONVERSATION_MAX)
+  const d0 = details === 0 ? 0 : clampWidth(details, DETAILS_MIN, DETAILS_MAX)
+  const room = (c: number, d: number): number => viewport - s - c - d
+
+  // Step 1: every preference fits.
+  if (room(c0, d0) >= WORKSPACE_MIN) return { sidebar: s, workspace: room(c0, d0), conversation: c0, details: d0 }
+
+  // Step 2: shrink details toward its own floor.
+  const d1 = d0 === 0 ? 0 : Math.max(DETAILS_MIN, viewport - s - c0 - WORKSPACE_MIN)
+  if (room(c0, d1) >= WORKSPACE_MIN) return { sidebar: s, workspace: WORKSPACE_MIN, conversation: c0, details: d1 }
+
+  // Step 3: shrink the conversation toward its own floor, details still open.
+  const c1 = c0 === 0 ? 0 : Math.max(CONVERSATION_MIN, viewport - s - d1 - WORKSPACE_MIN)
+  if (room(c1, d1) >= WORKSPACE_MIN) return { sidebar: s, workspace: WORKSPACE_MIN, conversation: c1, details: d1 }
+
+  // Step 4: close details outright; the conversation keeps its floor.
+  if (room(c1, 0) >= WORKSPACE_MIN) return { sidebar: s, workspace: WORKSPACE_MIN, conversation: c1, details: 0 }
+
+  // Step 5: the workspace absorbs the rest, below its floor if it must.
+  return { sidebar: s, workspace: Math.max(0, viewport - s - c1), conversation: c1, details: 0 }
 }

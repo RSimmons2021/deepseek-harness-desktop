@@ -1,19 +1,16 @@
 /*
  * Desktop split: session rail, the Team workspace hero, the conversation
- * reading column, and the details column. The sidebar and details tracks are
- * driven by the layout store's width preferences (0 = closed, resolved to the
- * compact rail for the sidebar), so `ctx.layout` moves them here exactly as it
- * does in the browser frame. Every content track is min-0 so each surface
- * scrolls inside itself instead of stretching the window.
+ * reading column, and the details column. Every track is resolved by the
+ * desktop concession chain and written inline by the frame, so a width the
+ * reader dragged and a width `ctx.layout` opened are the same value. Every
+ * content track is min-0 so each surface scrolls inside itself instead of
+ * stretching the window.
  */
 .frame {
+  /* Anchors the drag handles, which straddle the column borders. Track widths
+     are written inline from the concession solve rather than declared here. */
   position: relative;
   display: grid;
-  grid-template-columns:
-    var(--dsh-desktop-sidebar, 280px)
-    minmax(0, 1fr)
-    minmax(320px, 34%)
-    var(--dsh-desktop-details, 0px);
   grid-template-rows: 100%;
   grid-template-areas: 'sidebar workspace conversation details';
   height: 100%;
@@ -37,20 +34,11 @@
 }
 
 /*
- * Nothing has happened in this Session yet, so the Team surface can only show an
- * inert roster while the conversation carries the workspace picker and the
- * composer that unblock everything. The workspace track collapses until the
- * Session stops being blank. The column stays mounted — its ambient is the
- * window's ground and is positioned against the viewport, so a zero track
- * neither clips nor hides it — and the grid transition reveals the hero when
- * the first work lands.
+ * Dragging writes widths at pointer cadence; easing them would detach the
+ * column edge from the handle.
  */
-.frame[data-session-blank] {
-  grid-template-columns:
-    var(--dsh-desktop-sidebar, 280px)
-    0
-    minmax(0, 1fr)
-    var(--dsh-desktop-details, 0px);
+.frame[data-dragging] {
+  transition: none;
 }
 
 .sidebarCol {
@@ -118,28 +106,6 @@
   pointer-events: auto;
 }
 
-/* Too narrow for four tracks: the hero and the conversation stack instead. */
-@media (max-width: 1240px) {
-  .frame {
-    grid-template-columns:
-      var(--dsh-desktop-sidebar, 280px)
-      minmax(0, 1fr)
-      var(--dsh-desktop-details, 0px);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas:
-      'sidebar workspace details'
-      'sidebar conversation details';
-  }
-
-  .conversationCol {
-    border-top: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 60%, transparent);
-    border-left: 0;
-  }
-
-  .frame[data-session-blank] {
-    grid-template-rows: 0 minmax(0, 1fr);
-  }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .frame {

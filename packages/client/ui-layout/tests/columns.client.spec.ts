@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CENTER_MIN, clampWidth, computeColumns,
+  CENTER_MIN, clampWidth, computeColumns, computeDesktopColumns,
+  CONVERSATION_DEFAULT, CONVERSATION_MIN,
   DETAILS_DEFAULT, DETAILS_MIN, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT, SIDEBAR_MIN,
+  WORKSPACE_MIN,
 } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 
 // Numeric preference form (0 = closed); helpers keep the scenario names readable.
@@ -91,5 +93,77 @@ describe('computeColumns — degenerate viewports', () => {
     // Reaches step 3's auto-close with the compact rail sidebar.
     expect(computeColumns(500, closed(300), open(DETAILS_DEFAULT)))
       .toEqual({ sidebar: SIDEBAR_COLLAPSED, center: 500 - SIDEBAR_COLLAPSED, details: 0 })
+  })
+})
+
+describe('computeDesktopColumns', () => {
+  it('gives the workspace whatever the window has left once every preference fits', () => {
+    const cols = computeDesktopColumns(1920, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
+    expect(cols).toEqual({
+      sidebar: SIDEBAR_DEFAULT,
+      workspace: 1920 - SIDEBAR_DEFAULT - CONVERSATION_DEFAULT - DETAILS_DEFAULT,
+      conversation: CONVERSATION_DEFAULT,
+      details: DETAILS_DEFAULT,
+    })
+    // The workspace is the one track that grows with the window, so a wider
+    // window is a wider hero and nobody has to drag anything.
+    const wider = computeDesktopColumns(2400, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
+    expect(wider.workspace - cols.workspace).toBe(480)
+    expect(wider.conversation).toBe(cols.conversation)
+  })
+
+  it('a closed sidebar keeps its rail and closed tracks contribute nothing', () => {
+    const cols = computeDesktopColumns(1600, closed(SIDEBAR_DEFAULT), closed(CONVERSATION_DEFAULT), closed(DETAILS_DEFAULT))
+    expect(cols).toEqual({ sidebar: SIDEBAR_COLLAPSED, workspace: 1600 - SIDEBAR_COLLAPSED, conversation: 0, details: 0 })
+  })
+
+  it('concedes details first, then the conversation, and never rewrites a preference', () => {
+    // Wide enough for the sidebar, both floors, and the workspace floor, but
+    // not for the preferred details width: details gives up its room first.
+    const squeezed = computeDesktopColumns(
+      SIDEBAR_DEFAULT + WORKSPACE_MIN + CONVERSATION_DEFAULT + DETAILS_MIN + 40,
+      open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT),
+    )
+    expect(squeezed.workspace).toBe(WORKSPACE_MIN)
+    expect(squeezed.conversation).toBe(CONVERSATION_DEFAULT)
+    expect(squeezed.details).toBe(DETAILS_MIN + 40)
+
+    // Narrower still: details is at its floor, so the conversation gives next.
+    const tighter = computeDesktopColumns(
+      SIDEBAR_DEFAULT + WORKSPACE_MIN + CONVERSATION_MIN + DETAILS_MIN + 30,
+      open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT),
+    )
+    expect(tighter.workspace).toBe(WORKSPACE_MIN)
+    expect(tighter.details).toBe(DETAILS_MIN)
+    expect(tighter.conversation).toBe(CONVERSATION_MIN + 30)
+
+    // Re-widening restores both, because the solve reads the preferences and
+    // never wrote to them.
+    const restored = computeDesktopColumns(1920, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
+    expect(restored.conversation).toBe(CONVERSATION_DEFAULT)
+    expect(restored.details).toBe(DETAILS_DEFAULT)
+  })
+
+  it('closes details outright, then lets the workspace go under its floor', () => {
+    const closedDetails = computeDesktopColumns(
+      SIDEBAR_DEFAULT + WORKSPACE_MIN + CONVERSATION_MIN,
+      open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT),
+    )
+    expect(closedDetails).toEqual({
+      sidebar: SIDEBAR_DEFAULT, workspace: WORKSPACE_MIN, conversation: CONVERSATION_MIN, details: 0,
+    })
+
+    // Below every floor combined the workspace absorbs the deficit: something
+    // has to, and it is the track with the most room to give.
+    const last = computeDesktopColumns(900, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
+    expect(last.conversation).toBe(CONVERSATION_MIN)
+    expect(last.details).toBe(0)
+    expect(last.workspace).toBe(900 - SIDEBAR_DEFAULT - CONVERSATION_MIN)
+    expect(last.workspace).toBeLessThan(WORKSPACE_MIN)
+  })
+
+  it('never resolves a negative track', () => {
+    const cols = computeDesktopColumns(200, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
+    expect(cols.workspace).toBe(0)
   })
 })

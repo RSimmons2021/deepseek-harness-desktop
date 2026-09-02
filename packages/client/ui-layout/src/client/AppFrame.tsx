@@ -16,6 +16,7 @@ import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
+import { DragHandle } from './DragHandle.tsx'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
@@ -35,56 +36,6 @@ function CenterColumn(props: { children?: ReactNode }) {
 /** Details column grid item; width 0 keeps the subtree mounted (never unmount on close). */
 function DetailsColumn(props: { children?: ReactNode }) {
   return <div className={css.detailsCol}>{props.children}</div>
-}
-
-/**
- * One drag handle: pointer capture, rAF-throttled dx reports against the drag-start origin.
- * `side` keys the hover-reveal CSS to the owning column.
- */
-function DragHandle(props: { side: 'sidebar' | 'details'; left: number; onStart: () => void; onDrag: (dx: number) => void; onEnd: () => void }) {
-  const [dragging, setDragging] = useState(false)
-  const origin = useRef(0)
-  const latest = useRef(0)
-  const frame = useRef<number | null>(null)
-  const callbacks = useRef({ onStart: props.onStart, onDrag: props.onDrag, onEnd: props.onEnd })
-  callbacks.current = { onStart: props.onStart, onDrag: props.onDrag, onEnd: props.onEnd }
-
-  const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.currentTarget.setPointerCapture(e.pointerId)
-    origin.current = e.clientX
-    latest.current = e.clientX
-    callbacks.current.onStart()
-    setDragging(true)
-  }, [])
-  const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
-    latest.current = e.clientX
-    frame.current ??= requestAnimationFrame(() => {
-      frame.current = null
-      callbacks.current.onDrag(latest.current - origin.current)
-    })
-  }, [])
-  const onPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
-    e.currentTarget.releasePointerCapture(e.pointerId)
-    if (frame.current !== null) { cancelAnimationFrame(frame.current); frame.current = null }
-    callbacks.current.onDrag(latest.current - origin.current)
-    setDragging(false)
-    callbacks.current.onEnd()
-  }, [])
-
-  return (
-    <div
-      className={css.handle}
-      style={{ left: props.left }}
-      data-side={props.side}
-      data-dragging={dragging || undefined}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-    />
-  )
 }
 
 /** The three-column frame (see module doc). */
@@ -211,8 +162,12 @@ export function AppFrame({
         {renderSlot('shell.overlay', {})}
       </div>
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-      {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
+      {!sidebarCollapsed && (
+        <DragHandle side="sidebar" left={cols.sidebar} label={t('layout.resizeSidebar')} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />
+      )}
+      {cols.details > 0 && (
+        <DragHandle side="details" left={viewport - cols.details} label={t('layout.resizeDetails')} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />
+      )}
     </div>
   )
 }

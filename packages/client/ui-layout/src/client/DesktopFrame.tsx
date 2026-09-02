@@ -3,14 +3,18 @@
  * alongside the ordinary sidebar, conversation, and details columns, so the
  * desktop app keeps the Team workspace as its hero and still reaches session
  * history, settings, and tool details. It takes the same layout store as
- * AppFrame, so `ctx.layout` opens and closes the details column here too.
- * Pure component: everything arrives through the framework shares.
+ * AppFrame, so `ctx.layout` opens and closes the details column here too, and
+ * it owns the same drag handles: every seam between two columns is one the
+ * reader can move. Pure component: everything arrives through the framework
+ * shares.
  */
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import { SIDEBAR_COLLAPSED } from './columns.ts'
+import { computeDesktopColumns } from './columns.ts'
+import { DragHandle } from './DragHandle.tsx'
 import type { createLayoutStore } from './stores.ts'
 import css from './DesktopFrame.module.css'
 
@@ -27,7 +31,7 @@ function DetailsColumn(props: { children?: ReactNode }) {
 }
 
 /** Lay the window out as sidebar, Team workspace, conversation, and details. */
-export function DesktopFrame({ useStore, useSessions, renderSlot, SessionProvider }: DesktopFrameProps) {
+export function DesktopFrame({ useStore, useSessions, actions, renderSlot, SessionProvider, t }: DesktopFrameProps) {
   const panels = useStore(s => s)
   /*
    * A blank Session is one nothing has happened in yet, which is exactly when
@@ -41,25 +45,81 @@ export function DesktopFrame({ useStore, useSessions, renderSlot, SessionProvide
     const current = sessions.current
     return current === undefined || sessions.byId[current]?.blank !== false
   })
+  const frameRef = useRef<HTMLDivElement | null>(null)
+  const [viewport, setViewport] = useState(() => window.innerWidth)
+
+  // Track the frame's own box rather than the window, so a resize the window
+  // manager drives and one a column drag drives are the same measurement.
+  useEffect(() => {
+    const el = frameRef.current
+    /* v8 ignore next -- the ref is always attached by effect time: the frame div renders unconditionally. */
+    if (el === null) return
+    let raf: number | null = null
+    const observer = new ResizeObserver(() => {
+      raf ??= requestAnimationFrame(() => {
+        raf = null
+        const width = el.getBoundingClientRect().width
+        if (width > 0) setViewport(width)
+      })
+    })
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      if (raf !== null) cancelAnimationFrame(raf)
+    }
+  }, [])
+
   // The store's width preference IS the open/closed state: zero resolves to the
   // compact control rail, which stays mounted so the sidebar occupant keeps its
   // own state across a collapse.
   const sidebarCollapsed = panels.sidebar === 0
-  const sidebarWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED : panels.sidebar
+  // A blank Session hands the whole window to the conversation, so the
+  // workspace track is the one that closes and the seams around it go with it.
+  const cols = computeDesktopColumns(
+    viewport,
+    sidebarCollapsed ? 0 : panels.sidebar,
+    sessionBlank ? 0 : panels.conversation,
+    panels.details,
+  )
+  const colsRef = useRef(cols)
+  colsRef.current = cols
+
+  // Each gesture holds the width its column was rendered at when the drag
+  // started, so a column the concession chain had already clamped does not jump
+  // back to its stored preference, and deltas never compound.
+  const sidebarBase = useRef(0)
+  const conversationBase = useRef(0)
+  const detailsBase = useRef(0)
+  // Track transitions pause for the whole gesture: an eased track would detach
+  // the column edge from the pointer.
+  const [dragging, setDragging] = useState(false)
+  const onDragEnd = useCallback(() => { setDragging(false) }, [])
+  const onSidebarStart = useCallback(() => { sidebarBase.current = colsRef.current.sidebar; setDragging(true) }, [])
+  const onConversationStart = useCallback(() => { conversationBase.current = colsRef.current.conversation; setDragging(true) }, [])
+  const onDetailsStart = useCallback(() => { detailsBase.current = colsRef.current.details; setDragging(true) }, [])
+  const onSidebarDrag = useCallback((dx: number) => { actions.setSidebar(sidebarBase.current + dx) }, [actions])
+  // The workspace and conversation share one seam: dragging it right gives the
+  // workspace the room and takes it from the conversation.
+  const onConversationDrag = useCallback((dx: number) => { actions.setConversation(conversationBase.current - dx) }, [actions])
+  const onDetailsDrag = useCallback((dx: number) => { actions.setDetails(detailsBase.current - dx) }, [actions])
+
+  const workspaceEdge = cols.sidebar + cols.workspace
 
   return (
     <div
+      ref={frameRef}
       className={css.frame}
       style={{
-        '--dsh-desktop-sidebar': `${String(sidebarWidth)}px`,
-        '--dsh-desktop-details': `${String(panels.details)}px`,
-      } as React.CSSProperties}
+        gridTemplateColumns:
+          `${String(cols.sidebar)}px ${String(cols.workspace)}px ${String(cols.conversation)}px ${String(cols.details)}px`,
+      }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
-      data-details-collapsed={panels.details === 0 || undefined}
+      data-details-collapsed={cols.details === 0 || undefined}
       data-session-blank={sessionBlank || undefined}
+      data-dragging={dragging || undefined}
     >
       <div className={css.sidebarCol}>
-        {renderSlot('sidebar', { collapsed: sidebarCollapsed, width: sidebarWidth })}
+        {renderSlot('sidebar', { collapsed: sidebarCollapsed, width: cols.sidebar })}
       </div>
       <div className={css.workspaceCol}>{renderSlot('desktop.root', {})}</div>
       <div className={css.conversationCol}>{renderSlot('conversation', {})}</div>
@@ -69,6 +129,37 @@ export function DesktopFrame({ useStore, useSessions, renderSlot, SessionProvide
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
+      {/* The collapsed rail is fixed-width: no seam to move while closed. */}
+      {!sidebarCollapsed && (
+        <DragHandle
+          side="sidebar"
+          left={cols.sidebar}
+          label={t('layout.resizeSidebar')}
+          onStart={onSidebarStart}
+          onDrag={onSidebarDrag}
+          onEnd={onDragEnd}
+        />
+      )}
+      {cols.workspace > 0 && cols.conversation > 0 && (
+        <DragHandle
+          side="workspace"
+          left={workspaceEdge}
+          label={t('layout.resizeWorkspace')}
+          onStart={onConversationStart}
+          onDrag={onConversationDrag}
+          onEnd={onDragEnd}
+        />
+      )}
+      {cols.details > 0 && (
+        <DragHandle
+          side="details"
+          left={viewport - cols.details}
+          label={t('layout.resizeDetails')}
+          onStart={onDetailsStart}
+          onDrag={onDetailsDrag}
+          onEnd={onDragEnd}
+        />
+      )}
     </div>
   )
 }
