@@ -177,27 +177,34 @@ export function apply(ctx: ClientContext): void {
    * A preset is stored and re-applied on load, while a drag stays transient —
    * so reopening the app restores the arrangement the reader chose rather than
    * a geometry they nudged once.
+   *
+   * Nested rather than declared in this plugin's own `inject`: this is the root
+   * frame, so a composition without a settings scope must still get its window.
+   * Declaring the dependency at the top suspended the whole plugin and the app
+   * rendered nothing at all.
    */
-  ctx.effect(() => {
-    const preference = bindLayoutPreference(
-      ctx.settingsScope.bind<LayoutSettings>({ namespace: LAYOUT_SETTINGS_NAMESPACE }),
-      (preset) => { layout.applyPreset(preset) },
-    )
-    const disposeRow = ctx.slots.inject('settings.general.item', () => ctx.slots.register({
-      name: 'settings.general.item',
-      id: 'layout-preset',
-      order: 10,
-      locale: 'common',
-      inject: (): LayoutPresetRowInjected => ({
-        hooks: { layoutPreset: preference.current },
-        setLayoutPreset: preference.set,
-      }),
-    }, LayoutPresetRow))
-    return () => {
-      preference.dispose()
-      disposeRow()
-    }
-  }, 'ui-layout: window arrangement preference')
+  ctx.inject(['settingsScope'], (scoped) => {
+    scoped.effect(() => {
+      const preference = bindLayoutPreference(
+        scoped.settingsScope.bind<LayoutSettings>({ namespace: LAYOUT_SETTINGS_NAMESPACE }),
+        (preset) => { layout.applyPreset(preset) },
+      )
+      const disposeRow = scoped.slots.inject('settings.general.item', () => scoped.slots.register({
+        name: 'settings.general.item',
+        id: 'layout-preset',
+        order: 10,
+        locale: 'common',
+        inject: (): LayoutPresetRowInjected => ({
+          hooks: { layoutPreset: preference.current },
+          setLayoutPreset: preference.set,
+        }),
+      }, LayoutPresetRow))
+      return () => {
+        preference.dispose()
+        disposeRow()
+      }
+    }, 'ui-layout: window arrangement preference')
+  })
 
   // Theme presentation: pure DOM writes from resolved snapshots — initial
   // state through the getter once, then event-driven only; no React path.
