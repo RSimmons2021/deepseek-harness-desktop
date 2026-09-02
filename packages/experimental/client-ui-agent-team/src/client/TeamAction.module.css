@@ -1551,3 +1551,54 @@
   color: var(--team-ink-muted);
   font-style: normal;
 }
+
+/*
+ * Role choices. A teammate is created by picking what it is for and saying what
+ * to do, so the choices are the first thing in the form and read as a set
+ * rather than as a dropdown that hides the alternatives.
+ */
+.roleChoices {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+}
+
+.roleChip {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border: 1px solid var(--team-stroke);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--team-ink) 4%, transparent);
+  color: var(--team-ink-muted);
+  gap: 2px;
+  text-align: left;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.roleChip strong {
+  color: var(--team-ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.roleChip small {
+  color: var(--team-ink-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.roleChip:hover {
+  border-color: color-mix(in srgb, var(--team-ink) 22%, transparent);
+}
+
+.roleChip[data-team-role-selected] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 46%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roleChip {
+    transition: none;
+  }
+}

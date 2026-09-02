@@ -14,6 +14,8 @@ export type {
   TeamMemberEffort,
   TeamMemberView,
   TeamMessageMutationResult,
+  TeamRole,
+  TeamRoleRoute,
   TeamSpawnMutationResult,
   TeamTailKind,
   TeamTailLine,

@@ -62,6 +62,7 @@ function props(current: SessionId | undefined): DesktopTeamRootProps {
     sendMessage: () => Promise.reject(new Error('not used')),
     interrupt: () => Promise.reject(new Error('not used')),
     follow: () => () => {},
+    roles: () => Promise.resolve({ ok: true, value: [] }),
     activity: () => Promise.resolve({ ok: true, value: [] }),
     // Tail rows reveal in sequence; under reduced motion they simply appear.
     tail: () => Promise.resolve({

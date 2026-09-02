@@ -14,6 +14,7 @@ import type { TokenUsageProjection } from '@deepseek-ai/dsh-token-meter'
 import { foldSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
 import type { ContinuableStart } from '@deepseek-ai/dsh-subagent'
 import { errorMessage, TeamError } from './error.ts'
+import { agentOptionsOf } from './roles.ts'
 import type { TeamFoldState } from './fold.ts'
 import type { TeamJournal } from './journal.ts'
 import type { TeamRuntimeLifecycle } from './lifecycle.ts'
@@ -153,7 +154,10 @@ export class TeamRoster {
     }]
     for (const member of state.members.values()) {
       const live = this.ctx.agents.get(member.id)
-      const model = live?.options.model ?? root.options.model
+      // The live Agent first, then what the member was created with, and only
+      // then the Lead's: an idle routed teammate still runs on its own route,
+      // and reporting the Lead's model for it would be false.
+      const model = live?.options.model ?? member.route?.model ?? root.options.model
       const effort = live === undefined ? undefined : this.effortOf(live.session)
       result.push({
         id: member.id,
@@ -167,6 +171,7 @@ export class TeamRoster {
         description: member.description,
         provider: member.provider,
         context: member.context,
+        ...member.roleId === undefined ? {} : { roleId: member.roleId },
         ...model === undefined ? {} : { model },
         ...effort === undefined ? {} : { effort },
         pendingMessages: undelivered.get(member.id) ?? 0,
@@ -279,6 +284,8 @@ export class TeamRoster {
       description,
       provider: requiredText(request.provider, 'provider', 200),
       context: request.context,
+      ...request.roleId === undefined ? {} : { roleId: request.roleId },
+      ...request.route === undefined ? {} : { route: request.route },
       phase: 'provisioning',
     }
 
@@ -302,6 +309,10 @@ export class TeamRoster {
         request: {
           prompt: request.prompt,
           parent: root,
+          // A role's route reaches the child as host-Agent options; an absent
+          // field there leaves the child on whatever the Lead is running, so a
+          // Team that configures no routes runs entirely on the Lead's model.
+          ...request.route === undefined ? {} : { agentOptions: agentOptionsOf(request.route) },
         },
         signal,
       })

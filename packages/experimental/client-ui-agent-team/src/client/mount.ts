@@ -88,6 +88,9 @@ function registerUi(ctx: ClientContext): void {
     async sendMessage(sessionId, request) {
       return await ctx.remote.agentTeams.sendMessage(leadSessionId(sessionId), request)
     },
+    async roles(sessionId) {
+      return await ctx.remote.agentTeams.roles(leadSessionId(sessionId))
+    },
     async activity(sessionId, limit) {
       return await ctx.remote.agentTeams.activity(leadSessionId(sessionId), limit)
     },

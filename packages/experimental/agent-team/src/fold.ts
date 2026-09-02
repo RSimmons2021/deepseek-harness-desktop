@@ -71,6 +71,14 @@ const teamMemberSnapshotSchema = z.object({
   description: z.string(),
   provider: z.string(),
   context: z.enum(['fresh', 'fork']),
+  roleId: z.string().optional(),
+  // Every field is optional, so a role that routes only the model is a valid
+  // record; the whole object is absent when the member runs on the Lead's route.
+  route: z.object({
+    provider: z.string().optional(),
+    model: z.string().optional(),
+    reasoningEffort: z.string().optional(),
+  }).strict().optional(),
   phase: z.enum(['provisioning', 'active', 'failed']),
   error: z.string().optional(),
 }).strict() as z.ZodType<TeamMemberSnapshot>

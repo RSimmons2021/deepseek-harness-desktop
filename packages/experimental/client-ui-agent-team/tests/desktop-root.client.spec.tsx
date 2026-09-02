@@ -54,6 +54,7 @@ function props(overrides: {
     sendMessage: () => Promise.reject(new Error('not used')),
     interrupt: () => Promise.reject(new Error('not used')),
     follow: () => () => {},
+    roles: () => Promise.resolve({ ok: true, value: [] }),
     activity: () => Promise.resolve({ ok: true, value: [] }),
     tail: () => Promise.resolve({ ok: true, value: [] }),
     openTeammate: () => Promise.resolve(),

@@ -85,6 +85,7 @@ async function bench(options: {
     createTask: answer('agentTeams/createTask', task),
     spawnTeammate: answer('agentTeams/spawnTeammate', { ok: true, value: { member: view.members[0] } }),
     sendMessage: answer('agentTeams/sendMessage', { ok: true, value: { messageId: 'm-1', status: 'accepted' } }),
+    roles: answer('agentTeams/roles', []),
     activity: answer('agentTeams/activity', []),
     tail: answer('agentTeams/tail', []),
     interrupt: answer('agentTeams/interrupt', { ok: true, value: { previousStatus: 'running' } }),
@@ -333,16 +334,15 @@ describe('ui-team browser plugin', () => {
     const b = await bench({ addressed: true })
     const actions = (b.entry()!.inject as unknown as () => TeamActionInjected)()
 
-    await actions.spawnTeammate(CHILD, {
-      name: 'writer', description: 'writes', prompt: 'draft it', context: 'fresh',
-    })
+    await actions.spawnTeammate(CHILD, { role: 'reviewer', prompt: 'draft it' })
     await actions.sendMessage(CHILD, { target: 'writer', message: 'take it', delivery: 'quiet' })
+    await actions.roles(CHILD)
     await actions.activity(CHILD, 40)
     await actions.tail(CHILD, 'writer', 6)
     await actions.interrupt(CHILD, 'writer')
 
     expect(b.calls.map(call => call.method)).toEqual([
-      'agentTeams/spawnTeammate', 'agentTeams/sendMessage', 'agentTeams/activity',
+      'agentTeams/spawnTeammate', 'agentTeams/sendMessage', 'agentTeams/roles', 'agentTeams/activity',
       'agentTeams/tail', 'agentTeams/interrupt',
     ])
     // Every one addresses the Lead, never the teammate conversation it was called from.

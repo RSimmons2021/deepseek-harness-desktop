@@ -18,10 +18,20 @@ interface TeamMemberSnapshot {
   readonly context: 'fresh' | 'fork'
   readonly phase: TeamMemberPhase
   readonly error?: string
+  /** The role this member was staffed from, when it was staffed from one. */
+  readonly roleId?: string
+  /**
+   * Where this member runs, recorded at creation.
+   *
+   * Durable rather than read from the live Agent, because a member that is not
+   * attached still runs on the route it was created with: reading only the live
+   * Agent made an idle routed teammate report the Lead's model instead.
+   */
+  readonly route?: TeamRoleRoute
 }
 ```
 
-Every member starts in `provisioning` and reaches exactly one terminal roster phase, `active` or `failed`. Runtime `running`/`idle`/`inactive` status is derived separately and never rewrites this record.
+A member staffed from a role records which one and where it runs, so an idle teammate still reports its own model rather than the Lead's. Every member starts in `provisioning` and reaches exactly one terminal roster phase, `active` or `failed`. Runtime `running`/`idle`/`inactive` status is derived separately and never rewrites this record.
 
 ## Durable mailbox
 

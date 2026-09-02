@@ -12,11 +12,14 @@ import { TeamJournal } from './journal.ts'
 import { tailLineOf } from './tail.ts'
 import { TeamRuntimeLifecycle } from './lifecycle.ts'
 import { TeamMailbox } from './mailbox.ts'
+import { DEFAULT_TEAM_ROLES, resolveRoles, resolveSpawn } from './roles.ts'
 import { TeamRoster } from './roster.ts'
 import type { TeamMembership } from './roster.ts'
 import { scopeCovers, TeamTaskBoard } from './task-board.ts'
 import { TeamId, TeamTaskId } from './types.ts'
 import type {
+  StaffTeammateRequest,
+  TeamRole,
   Config,
   CreateTeamTaskRequest,
   SendTeamMessageRequest,
@@ -87,7 +90,7 @@ function positiveLimit(name: string, value: number): number {
 export class TeamService extends TypertRemoteService {
   static inject = ['agents', 'sessions', 'sessionPersistence', 'subagents']
 
-  static Config: z<Config> = z.object({
+  static Config = z.object({
     maxMembers: z.number().step(1).min(1).default(DEFAULT_MAX_MEMBERS),
     maxTasks: z.number().step(1).min(1).default(DEFAULT_MAX_TASKS),
     maxPendingMessagesPerMember: z.number().step(1).min(1).default(DEFAULT_MAX_PENDING_MESSAGES),
@@ -95,7 +98,21 @@ export class TeamService extends TypertRemoteService {
     disposalTimeoutMs: z.number().step(1).min(1).default(DEFAULT_DISPOSAL_TIMEOUT_MS),
     freshProvider: z.string().default(DEFAULT_FRESH_PROVIDER),
     forkProvider: z.string().default(DEFAULT_FORK_PROVIDER),
-  })
+    roles: (z.array(z.object({
+      id: z.string().required(),
+      name: z.string().required(),
+      description: z.string().required(),
+      brief: z.string().required(),
+      context: z.union(['fresh', 'fork']).required(),
+      route: z.object({
+        provider: z.string(),
+        model: z.string(),
+        reasoningEffort: z.string(),
+      }),
+    // The element type the schema infers is structurally the role but not
+    // assignably it, so the default is declared against the contract's own type.
+    })) as z<TeamRole[]>).default([...DEFAULT_TEAM_ROLES]),
+  }) as z<Config>
 
   /** Validated deployment limits used by every Team operation. */
   private readonly config: Required<Config>
@@ -123,6 +140,7 @@ export class TeamService extends TypertRemoteService {
       ),
       freshProvider: config.freshProvider ?? DEFAULT_FRESH_PROVIDER,
       forkProvider: config.forkProvider ?? DEFAULT_FORK_PROVIDER,
+      roles: resolveRoles(config.roles ?? DEFAULT_TEAM_ROLES),
     }
 
     this.activity = new TeamActivity()
@@ -405,6 +423,19 @@ export class TeamService extends TypertRemoteService {
    * @param request - immutable name, description, opening prompt, and context mode.
    * @returns the active roster row, or a typed Team rejection.
    */
+  /**
+   * Names this Team has already used, which it never reuses.
+   *
+   * A role's name stem is what every teammate of that role would be called, so
+   * the derivation needs to know what is gone before it picks.
+   * @param agent - exact live Team member asking.
+   * @returns every member name the Team has recorded.
+   */
+  private takenMemberNames(agent: Agent): ReadonlySet<string> {
+    const { root } = this.roster.membership(agent)
+    return new Set(this.journal.state(root).memberIdsByName.keys())
+  }
+
   @Remote('spawnTeammate')
   async remoteSpawnTeammate(
     agent: Agent,
@@ -413,14 +444,7 @@ export class TeamService extends TypertRemoteService {
     try {
       return {
         ok: true,
-        value: await this.spawnTeammate(agent, {
-          name: request.name,
-          description: request.description,
-          prompt: [{ type: 'text', text: request.prompt }],
-          context: request.context,
-          provider: this.providerFor(request.context),
-          signal: new AbortController().signal,
-        }),
+        value: await this.staffTeammate(agent, { ...request, signal: new AbortController().signal }),
       }
     } catch (error) {
       if (!(error instanceof TeamError)) throw error
@@ -473,6 +497,57 @@ export class TeamService extends TypertRemoteService {
       if (!(error instanceof TeamError)) throw error
       return { ok: false, error: { code: 'team-rejected', message: error.message } }
     }
+  }
+
+  /**
+   * The ways this Team can be staffed, through the generated Remote API.
+   *
+   * A surface offering roles has to name the same ones the spawn will accept,
+   * and the set is a deployment choice, so it is read from the service rather
+   * than restated by each caller. The brief is included because a reader
+   * choosing a role is entitled to see the standing instruction it carries.
+   * @param agent - exact live Team member reading the roles.
+   * @returns every configured role, in configuration order.
+   */
+  @Remote('roles')
+  remoteRoles(agent: Agent): TeamRole[] {
+    // The same membership precondition every other Team Remote carries: a stale
+    // or non-Team identity gets the Team's error rather than its answers.
+    this.roster.membership(agent)
+    return this.roles()
+  }
+
+  /**
+   * The ways this Team can be staffed.
+   * @returns every configured role, in configuration order.
+   */
+  roles(): TeamRole[] {
+    return [...this.config.roles]
+  }
+
+  /**
+   * Create one teammate from a role, or from fields the caller composed itself.
+   *
+   * Resolution lives here rather than in each caller, so the browser and the
+   * model-facing tool staff a Team the same way and a role means one thing.
+   * @param caller - exact live Lead Agent creating the teammate.
+   * @param request - a role and the work, or the complete fields, plus cancellation.
+   * @returns the active roster row.
+   */
+  async staffTeammate(caller: Agent, request: StaffTeammateRequest): Promise<SpawnTeammateResult> {
+    const resolved = resolveSpawn(request, this.config.roles, this.takenMemberNames(caller))
+    if (!resolved.ok) throw new TeamError(resolved.message, 'TEAM_ROLE_UNKNOWN')
+    const spawn = resolved.value
+    return await this.spawnTeammate(caller, {
+      name: spawn.name,
+      description: spawn.description,
+      prompt: [{ type: 'text', text: spawn.prompt }],
+      context: spawn.context,
+      provider: this.providerFor(spawn.context),
+      ...spawn.roleId === undefined ? {} : { roleId: spawn.roleId },
+      ...spawn.route === undefined ? {} : { route: spawn.route },
+      signal: request.signal,
+    })
   }
 
   /**

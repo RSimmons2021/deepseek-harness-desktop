@@ -52,6 +52,16 @@ export interface TeamMemberSnapshot {
   readonly context: 'fresh' | 'fork'
   readonly phase: TeamMemberPhase
   readonly error?: string
+  /** The role this member was staffed from, when it was staffed from one. */
+  readonly roleId?: string
+  /**
+   * Where this member runs, recorded at creation.
+   *
+   * Durable rather than read from the live Agent, because a member that is not
+   * attached still runs on the route it was created with: reading only the live
+   * Agent made an idle routed teammate report the Lead's model instead.
+   */
+  readonly route?: TeamRoleRoute
 }
 
 /**
@@ -88,6 +98,8 @@ export interface TeamMemberView {
   readonly description?: string
   readonly provider?: string
   readonly context?: 'fresh' | 'fork'
+  /** The role this member was staffed from, when it was staffed from one. */
+  readonly roleId?: string
   readonly model?: string
   readonly effort?: TeamMemberEffort
   /**
@@ -168,8 +180,54 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
+/**
+ * Where one role's teammates run.
+ *
+ * Every field is optional and an absent field inherits the Lead's own route,
+ * which is what keeps a role from quietly costing quality: a deployment opts a
+ * role onto a different model, and nothing is moved off the Lead's model
+ * without someone saying so.
+ */
+export interface TeamRoleRoute {
+  /** Provider route; absent inherits the Lead's. */
+  readonly provider?: string
+  /** Model id for that provider; absent inherits the Lead's. */
+  readonly model?: string
+  /** Adapter-owned reasoning effort; absent inherits the provider's default for the model. */
+  readonly reasoningEffort?: string
+}
+
+/**
+ * One named way to staff a Team.
+ *
+ * A role carries everything a teammate needs except the work itself, so
+ * creating one is choosing a role and describing a task rather than composing
+ * a name, a label, an opening prompt, and a context mode by hand.
+ */
+export interface TeamRole {
+  /** Stable identifier the tool and the browser name this role by. */
+  readonly id: string
+  /** Name stem for teammates created from this role; the Team suffixes it to keep names unique. */
+  readonly name: string
+  /** One line naming what this member is for; becomes the durable creation label. */
+  readonly description: string
+  /** Standing instruction placed above the task the caller supplies. */
+  readonly brief: string
+  /** Whether the teammate starts fresh or from the Lead's completed prefix. */
+  readonly context: 'fresh' | 'fork'
+  /** Where this role's teammates run; absent inherits the Lead's route entirely. */
+  readonly route?: TeamRoleRoute
+}
+
 /** Team-service deployment limits. */
 export interface Config {
+  /**
+   * Named ways to staff a Team, replacing the built-in set when supplied.
+   *
+   * Which models a deployment has, and which of them a given kind of work
+   * deserves, are deployment facts rather than product ones.
+   */
+  readonly roles?: readonly TeamRole[]
   /** Maximum immutable teammate names retained by one Team. */
   readonly maxMembers?: number
   /** Maximum non-deleted tasks retained by one Team. */
@@ -193,6 +251,31 @@ export interface SpawnTeammateRequest {
   readonly prompt: ContentBlock[]
   readonly context: 'fresh' | 'fork'
   readonly provider: string
+  /** The role this teammate was staffed from, recorded on its durable member row. */
+  readonly roleId?: string
+  /** Provider/model/effort for this teammate; absent inherits the Lead's route. */
+  readonly route?: TeamRoleRoute
+  readonly signal: AbortSignal
+}
+
+/**
+ * Input for staffing one teammate from a role, or from composed fields.
+ *
+ * The optional fields are what a role supplies; a caller with no role must
+ * supply all of them.
+ */
+export interface StaffTeammateRequest {
+  /** The role to staff. */
+  readonly role?: string
+  /** Override for the name the role would derive. */
+  readonly name?: string
+  /** Override for the role's durable creation label. */
+  readonly description?: string
+  /** The work itself; a role's brief is placed above it. */
+  readonly prompt: string
+  /** Override for the role's context mode. */
+  readonly context?: 'fresh' | 'fork'
+  /** Caller cancellation for the whole creation. */
   readonly signal: AbortSignal
 }
 
@@ -263,10 +346,23 @@ export type TeamTaskMutationResult =
  * context mode rather than a value a caller may pick.
  */
 export interface RemoteSpawnTeammateRequest {
-  readonly name: string
-  readonly description: string
+  /**
+   * The role to staff, which supplies the name, the label, the standing brief,
+   * the context mode, and the route. Absent means the caller is composing a
+   * teammate by hand and must supply `name`, `description`, and `context`.
+   */
+  readonly role?: string
+  /**
+   * The teammate's name. Absent with a role means the Team derives one from the
+   * role's stem, suffixing it until it is unique in this Team.
+   */
+  readonly name?: string
+  /** The durable creation label. Absent with a role means the role's own. */
+  readonly description?: string
+  /** The work itself; a role's brief is placed above it. */
   readonly prompt: string
-  readonly context: 'fresh' | 'fork'
+  /** Absent with a role means the role's own context mode. */
+  readonly context?: 'fresh' | 'fork'
 }
 
 /** Outcome of one Remote spawn, preserving Team rejections as business values. */

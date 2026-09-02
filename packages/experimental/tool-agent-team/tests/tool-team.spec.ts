@@ -53,7 +53,11 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
-async function setup(script: ConstructorParameters<typeof MockAdapter>[0], legacyControl = false) {
+async function setup(
+  script: ConstructorParameters<typeof MockAdapter>[0],
+  legacyControl = false,
+  teamConfig: ConstructorParameters<typeof TeamService>[1] = {},
+) {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
   const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-tool-team-'))
@@ -65,7 +69,7 @@ async function setup(script: ConstructorParameters<typeof MockAdapter>[0], legac
   if (legacyControl) await ctx.plugin(ToolSubagentControl)
   await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
   await ctx.plugin(SubagentFork, { providerName: 'fork' })
-  await ctx.plugin(TeamService)
+  await ctx.plugin(TeamService, teamConfig)
   const fiber = await ctx.plugin(toolTeam)
   const adapter = new MockAdapter(script)
   ctx.llm.registerAdapter(['mock'], adapter)
@@ -452,5 +456,56 @@ describe('dsh-tool-team', () => {
     const childId = spawnedChildId(result)
     await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
     expect(ctx.agentTeams.listMembers(lead)[1]).toMatchObject({ provider: 'team-fresh' })
+  })
+})
+
+describe('dsh-tool-team roles', () => {
+  it('offers the Team\u2019s roles to the model and staffs one from a role alone', async () => {
+    const { ctx, lead } = await setup(['hang'], false, {
+      roles: [{
+        id: 'reviewer',
+        name: 'reviewer',
+        description: 'Reads it back',
+        brief: 'You review; you do not fix.',
+        context: 'fresh',
+        route: { provider: 'mock', model: 'review-model' },
+      }],
+    })
+    // The enum alone would give the model an identifier and no way to choose,
+    // so the description names each role and what it is for.
+    const spawnSchema = (await assembly(ctx, lead)).tools.find(schema => schema.name === 'spawn_teammate')
+    expect(spawnSchema?.description).toContain('reviewer (reads it back)')
+
+    const spawned = await execute(ctx, lead, 'spawn_teammate', {
+      role: 'reviewer',
+      prompt: 'read the migration back',
+    })
+    expect(spawned.isError).toBe(false)
+    const roster = JSON.parse(text(await execute(ctx, lead, 'list_agents', {}))) as {
+      name: string
+      roleId?: string
+      model?: string
+    }[]
+    // Everything except the work came from the role, including where it runs.
+    expect(roster).toContainEqual(expect.objectContaining({
+      name: 'reviewer',
+      roleId: 'reviewer',
+      model: 'review-model',
+    }))
+  })
+
+  it('refuses a role this Team does not offer before the Team is asked', async () => {
+    const { ctx, lead } = await setup([])
+    const spawned = await execute(ctx, lead, 'spawn_teammate', { role: 'tester', prompt: 'test it' })
+    // The enum is the Team's own role ids, so a role that does not exist is
+    // rejected as an invalid argument rather than reaching the service.
+    expect(spawned.isError).toBe(true)
+    expect(text(spawned)).toContain('"role" must')
+  })
+
+  it('says so when a Team configures no roles at all', async () => {
+    const { ctx, lead } = await setup([], false, { roles: [] })
+    const spawnSchema = (await assembly(ctx, lead)).tools.find(schema => schema.name === 'spawn_teammate')
+    expect(spawnSchema?.description).toContain('this Team configures none, so compose teammates by hand')
   })
 })

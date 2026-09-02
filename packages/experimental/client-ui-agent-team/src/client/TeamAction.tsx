@@ -11,6 +11,7 @@ import type {
   TeamMemberEffort,
   TeamTailLine,
   TeamMemberView as TeamRosterMember,
+  TeamRole,
   TeamMessageMutationResult,
   TeamSpawnMutationResult,
   TeamInterruptMutationResult,
@@ -106,6 +107,8 @@ export interface TeamActionInjected {
    * Team is now; this shows how it got there, and is the only place a completed
    * task or a delivered message survives.
    */
+  /** The ways this Team can be staffed, which the spawn form offers as its choices. */
+  roles: (sessionId: SessionId) => Promise<TeamActionResult<TeamRole[]>>
   activity: (sessionId: SessionId, limit: number) => Promise<TeamActionResult<TeamActivityEntry[]>>
   /**
    * Read one member's most recent recorded work, newest first. A member the
@@ -127,7 +130,7 @@ export type TeamActionProps =
 export type TeamSurfaceProps = Pick<
   TeamActionProps,
   | 'sessionId' | 'load' | 'createTask' | 'updateTask' | 'spawnTeammate'
-  | 'sendMessage' | 'interrupt' | 'follow' | 'activity' | 'tail' | 'openTeammate'
+  | 'sendMessage' | 'interrupt' | 'follow' | 'roles' | 'activity' | 'tail' | 'openTeammate'
   | 'useColorScheme' | 'toggleTheme' | 't'
 > & {
   /** Keep the designed Team workspace mounted as the application surface. */
@@ -144,14 +147,21 @@ interface Draft {
 const EMPTY_DRAFT: Draft = { subject: '', description: '', blockers: '', scopes: '' }
 
 /** Open-seat spawn form state. The provider is absent: the service resolves it from the context mode. */
+/**
+ * What the reader supplies to staff a Team.
+ *
+ * A role carries the name, the label, the standing brief, the context mode, and
+ * the model, so the only thing left to say is the work. `name` stays available
+ * because a Team can hold several of one role and the reader may want to say
+ * which is which; empty means the Team derives one.
+ */
 interface SpawnDraft {
+  roleId: string
   name: string
-  description: string
   prompt: string
-  context: 'fresh' | 'fork'
 }
 
-const EMPTY_SPAWN: SpawnDraft = { name: '', description: '', prompt: '', context: 'fresh' }
+const EMPTY_SPAWN: SpawnDraft = { roleId: '', name: '', prompt: '' }
 
 /** Tiles the roster keeps on screen so a nearly empty Team still reads as a row. */
 const ROSTER_MIN_TILES = 4
@@ -359,7 +369,7 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
   sessionId, load, createTask, updateTask, spawnTeammate, sendMessage, interrupt, follow,
-  activity, tail, openTeammate, useColorScheme, toggleTheme, t, standalone = false,
+  activity, roles, tail, openTeammate, useColorScheme, toggleTheme, t, standalone = false,
 }: TeamSurfaceProps) {
   const colorScheme = useColorScheme(scheme => scheme)
   const [open, setOpen] = useState(standalone)
@@ -381,6 +391,7 @@ export function TeamAction({
   const [ambientPaused, setAmbientPaused] = useState(false)
   const [spawning, setSpawning] = useState(false)
   const [spawnDraft, setSpawnDraft] = useState<SpawnDraft>(EMPTY_SPAWN)
+  const [teamRoles, setTeamRoles] = useState<readonly TeamRole[]>([])
   const [spawnPending, setSpawnPending] = useState(false)
   const [messaging, setMessaging] = useState<SessionId | null>(null)
   const [messageDraft, setMessageDraft] = useState<MessageDraft>(EMPTY_MESSAGE)
@@ -419,6 +430,7 @@ export function TeamAction({
     setActiveMemberId(null)
     setSpawning(false)
     setSpawnDraft(EMPTY_SPAWN)
+    setTeamRoles([])
     setSpawnPending(false)
     setMessaging(null)
     setMessageDraft(EMPTY_MESSAGE)
@@ -558,6 +570,17 @@ export function TeamAction({
     )
   }, [follow, open, sessionId])
 
+  useEffect(() => {
+    if (!open) return
+    const requestedSession = sessionId
+    const reading = new AbortController()
+    const stopped = (): boolean => reading.signal.aborted
+    void roles(requestedSession).then((offered) => {
+      if (!stopped() && offered.ok) setTeamRoles(offered.value)
+    })
+    return () => { reading.abort() }
+  }, [open, roles, sessionId])
+
   // The history follows the view rather than the transport: whatever produced
   // a new board — a followed change or the manual refresh — is also what makes
   // the record of how it got there worth re-reading.
@@ -578,11 +601,14 @@ export function TeamAction({
     const requestedSession = sessionId
     setSpawnPending(true)
     try {
+      const named = spawnDraft.name.trim()
       const result = await spawnTeammate(requestedSession, {
-        name: spawnDraft.name.trim(),
-        description: spawnDraft.description.trim(),
+        role: spawnDraft.roleId,
+        // An empty override is not an override: the Team derives the name from
+        // the role's stem, which is what makes a second reviewer possible
+        // without the reader inventing a name for it.
+        ...named === '' ? {} : { name: named },
         prompt: spawnDraft.prompt.trim(),
-        context: spawnDraft.context,
       })
       if (sessionRef.current !== requestedSession) return
       if (!result.ok) {
@@ -1031,7 +1057,12 @@ export function TeamAction({
                               }}
                             >
                               <span className={css.memberTopline}>
-                                <span className={css.roleLabel}>{t(member.role === 'lead' ? 'leadRole' : 'teammateRole')}</span>
+                                {/* The role a member was staffed from says more
+                                    than "teammate" does, so it stands in for the
+                                    generic word whenever there is one. */}
+                                <span className={css.roleLabel}>
+                                  {member.roleId ?? t(member.role === 'lead' ? 'leadRole' : 'teammateRole')}
+                                </span>
                                 <span className={css.memberState}>
                                   <StateDot state={member.status === 'running' ? 'ongoing' : member.status === 'failed' ? 'error' : 'done'} />
                                   {member.status === 'provisioning'
@@ -1111,6 +1142,7 @@ export function TeamAction({
                         >
                           {addable && spawning && (
                             <SpawnForm
+                              roles={teamRoles}
                               draft={spawnDraft}
                               setDraft={setSpawnDraft}
                               pending={spawnPending}
@@ -1491,6 +1523,8 @@ function MessageForm({ draft, setDraft, pending, onSend, onCancel, t }: MessageF
 }
 
 interface SpawnFormProps {
+  /** The ways this Team can be staffed. */
+  roles: readonly TeamRole[]
   draft: SpawnDraft
   setDraft: (draft: SpawnDraft) => void
   pending: boolean
@@ -1500,35 +1534,45 @@ interface SpawnFormProps {
 }
 
 /** Open-seat form that turns remaining capacity into one durable teammate. */
-function SpawnForm({ draft, setDraft, pending, onSave, onCancel, t }: SpawnFormProps) {
-  const incomplete = draft.name.trim() === '' || draft.description.trim() === '' || draft.prompt.trim() === ''
+function SpawnForm({ roles, draft, setDraft, pending, onSave, onCancel, t }: SpawnFormProps) {
+  const chosen = roles.find(role => role.id === draft.roleId)
+  const incomplete = chosen === undefined || draft.prompt.trim() === ''
   return (
     <div className={`${css.form} ${css.spawnForm}`}>
-      <input
-        value={draft.name}
-        placeholder={t('teammateName')}
-        onChange={(event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, name: event.target.value }) }}
-      />
-      <input
-        value={draft.description}
-        placeholder={t('teammateDescription')}
-        onChange={(event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, description: event.target.value }) }}
-      />
+      <span className={css.fieldLabel}>{t('spawnRole')}</span>
+      <div className={css.roleChoices} role="radiogroup" aria-label={t('spawnRole')}>
+        {roles.map(role => (
+          <button
+            key={role.id}
+            type="button"
+            role="radio"
+            aria-checked={role.id === draft.roleId}
+            className={css.roleChip}
+            data-team-role-selected={role.id === draft.roleId || undefined}
+            onClick={() => { setDraft({ ...draft, roleId: role.id }) }}
+          >
+            <strong>{role.name}</strong>
+            <small>{role.description}</small>
+          </button>
+        ))}
+      </div>
+      {roles.length === 0 && <p className={css.spawnHint}>{t('noRoles')}</p>}
       <textarea
         value={draft.prompt}
         placeholder={t('teammatePrompt')}
         onChange={(event: ChangeEvent<HTMLTextAreaElement>) => { setDraft({ ...draft, prompt: event.target.value }) }}
       />
-      <select
-        value={draft.context}
-        aria-label={t('teammatePrompt')}
-        onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-          setDraft({ ...draft, context: event.target.value === 'fork' ? 'fork' : 'fresh' })
-        }}
-      >
-        <option value="fresh">{t('contextFresh')}</option>
-        <option value="fork">{t('contextFork')}</option>
-      </select>
+      <input
+        value={draft.name}
+        placeholder={chosen === undefined ? t('teammateName') : t('teammateNameFrom', { name: chosen.name })}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => { setDraft({ ...draft, name: event.target.value }) }}
+      />
+      {chosen !== undefined && (
+        <p className={css.spawnHint}>
+          {t(chosen.context === 'fork' ? 'contextFork' : 'contextFresh')}
+          {chosen.route?.model !== undefined && ` \u00b7 ${t('model')}: ${chosen.route.model}`}
+        </p>
+      )}
       <p className={css.spawnHint}>{t('spawnPermanent')}</p>
       <div className={css.formActions}>
         {pending

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
-  TeamActivityEntry, TeamTailLine, TeamTaskId, TeamTaskView as TeamTask, TeamView,
+  TeamActivityEntry, TeamRole, TeamTailLine, TeamTaskId, TeamTaskView as TeamTask, TeamView,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
@@ -71,6 +71,19 @@ const view: TeamView = {
   tasks: [task],
   capacity: 8,
 }
+
+/** Two ways to staff this Team, one of which routes its teammates elsewhere. */
+const TEAM_ROLES: TeamRole[] = [
+  { id: 'reviewer', name: 'reviewer', description: 'Reads it back', brief: 'You review.', context: 'fresh' },
+  {
+    id: 'planner',
+    name: 'planner',
+    description: 'Breaks the work up',
+    brief: 'You plan.',
+    context: 'fork',
+    route: { model: 'big-model' },
+  },
+]
 
 /** A board with something to depend on: a task cannot wait for itself. */
 const pairedView: TeamView = { ...view, tasks: [task, blocker] }
@@ -156,6 +169,7 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
     // Default fixture never emits, so the followed view never lands underneath
     // the assertions; the board still loads through the surface's own refresh.
     follow: () => () => {},
+    roles: () => Promise.resolve({ ok: true, value: TEAM_ROLES }),
     activity: () => Promise.resolve({ ok: true, value: [] }),
     tail: () => Promise.resolve({ ok: true, value: [] }),
     openTeammate: () => Promise.resolve(),
@@ -269,17 +283,14 @@ describe('TeamAction', () => {
 
     const add = await screen.findByRole('button', { name: new RegExp(zh.addTeammate, 'u') })
     fireEvent.click(add)
-    fireEvent.change(screen.getByPlaceholderText(zh.teammateName), { target: { value: 'writer' } })
-    fireEvent.change(screen.getByPlaceholderText(zh.teammateDescription), { target: { value: 'drafts copy' } })
+    fireEvent.click(await screen.findByRole('radio', { name: /reviewer/u }))
     fireEvent.change(screen.getByPlaceholderText(zh.teammatePrompt), { target: { value: 'draft the release note' } })
     fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
 
     await waitFor(() => {
       expect(spawnTeammate).toHaveBeenCalledWith(SESSION, {
-        name: 'writer',
-        description: 'drafts copy',
+        role: 'reviewer',
         prompt: 'draft the release note',
-        context: 'fresh',
       })
     })
     await waitFor(() => { expect(load).toHaveBeenCalledTimes(2) })
@@ -1321,18 +1332,15 @@ describe('TeamAction', () => {
       fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
       await screen.findByText('Implement runtime')
       fireEvent.click(screen.getByRole('button', { name: zh.addTeammate }))
-      fireEvent.change(screen.getByPlaceholderText(zh.teammateName), { target: { value: 'writer' } })
-      fireEvent.change(screen.getByPlaceholderText(zh.teammateDescription), { target: { value: 'writes' } })
+      fireEvent.click(await screen.findByRole('radio', { name: /planner/u }))
       fireEvent.change(screen.getByPlaceholderText(zh.teammatePrompt), { target: { value: 'draft it' } })
     }
-    const injected = actions({ spawnTeammate: spawn })
+    const injected = actions({ roles: () => Promise.resolve({ ok: true, value: TEAM_ROLES }), spawnTeammate: spawn })
     render(<TeamAction {...props(injected)} />)
     await open()
-    // A fork teammate is the other context the form offers.
-    fireEvent.change(screen.getByLabelText(zh.teammatePrompt), { target: { value: 'fork' } })
     fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
     expect((await screen.findByRole('alert')).textContent).toContain('spawn transport is down')
-    expect(spawn.mock.calls[0]?.[1]).toMatchObject({ name: 'writer', context: 'fork' })
+    expect(spawn.mock.calls[0]?.[1]).toMatchObject({ role: 'planner' })
 
     fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
     await waitFor(() => {
@@ -1340,7 +1348,7 @@ describe('TeamAction', () => {
     })
     // Cancelling clears the draft rather than leaving it half-filled.
     fireEvent.click(screen.getByRole('button', { name: zh.cancel }))
-    expect(screen.queryByPlaceholderText(zh.teammateName)).toBeNull()
+    expect(screen.queryByPlaceholderText(zh.teammatePrompt)).toBeNull()
   })
 
   it('drops a spawn result that lands after the conversation switches sessions', async () => {
@@ -1350,8 +1358,7 @@ describe('TeamAction', () => {
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
     fireEvent.click(screen.getByRole('button', { name: zh.addTeammate }))
-    fireEvent.change(screen.getByPlaceholderText(zh.teammateName), { target: { value: 'writer' } })
-    fireEvent.change(screen.getByPlaceholderText(zh.teammateDescription), { target: { value: 'writes' } })
+    fireEvent.click(await screen.findByRole('radio', { name: /reviewer/u }))
     fireEvent.change(screen.getByPlaceholderText(zh.teammatePrompt), { target: { value: 'draft it' } })
     fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
 
@@ -1529,13 +1536,11 @@ describe('TeamAction', () => {
     expect(screen.queryByRole('group')).toBeNull()
   })
 
-  it('keeps quiet delivery and a fresh context as the drafts they start in', async () => {
+  it('keeps quiet delivery as the draft it starts in', async () => {
     const send = vi.fn((_session: SessionId, _request: { delivery: string }) => Promise.resolve({
       ok: true as const, value: { ok: true as const, value: { messageId: 'm' as never, status: 'accepted' as const } },
     }))
-    const spawn = vi.fn((_session: SessionId, _request: { context: string }) =>
-      Promise.resolve(remoteFailure('not reached')))
-    render(<TeamAction {...props(actions({ sendMessage: send, spawnTeammate: spawn }))} />)
+    render(<TeamAction {...props(actions({ sendMessage: send }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
 
@@ -1547,16 +1552,57 @@ describe('TeamAction', () => {
     await waitFor(() => { expect(send).toHaveBeenCalledOnce() })
     expect(send.mock.calls[0]?.[1]).toMatchObject({ delivery: 'quiet' })
     expect(await screen.findByText(zh.messageQueued)).toBeTruthy()
+  })
 
+  it('staffs a teammate from a role and the work, and nothing else', async () => {
+    const spawn = vi.fn(() => Promise.resolve(remoteFailure('not reached')))
+    render(<TeamAction {...props(actions({ roles: () => Promise.resolve({ ok: true, value: TEAM_ROLES }), spawnTeammate: spawn }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
     fireEvent.click(screen.getByRole('button', { name: zh.addTeammate }))
-    fireEvent.change(screen.getByPlaceholderText(zh.teammateName), { target: { value: 'writer' } })
-    fireEvent.change(screen.getByPlaceholderText(zh.teammateDescription), { target: { value: 'writes' } })
-    fireEvent.change(screen.getByPlaceholderText(zh.teammatePrompt), { target: { value: 'draft it' } })
-    fireEvent.change(screen.getByLabelText(zh.teammatePrompt), { target: { value: 'fork' } })
-    fireEvent.change(screen.getByLabelText(zh.teammatePrompt), { target: { value: 'fresh' } })
+
+    // Every role the Team offers is on screen with what it is for, rather than
+    // hidden behind a control that shows one at a time.
+    const choices = await screen.findAllByRole('radio')
+    expect(choices.map(choice => choice.textContent)).toEqual(['reviewerReads it back', 'plannerBreaks the work up'])
+    // Nothing can be staffed before a role is chosen: the role is what supplies
+    // everything the reader is no longer typing.
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: zh.spawn }).disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole('radio', { name: /planner/u }))
+    // The chosen role says where its teammates run and what history they start
+    // from, because both change what the reader is about to get.
+    expect(screen.getByText(/big-model/u)).toBeTruthy()
+    fireEvent.change(screen.getByPlaceholderText(zh.teammatePrompt), { target: { value: 'split the migration up' } })
     fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
+
     await waitFor(() => { expect(spawn).toHaveBeenCalledOnce() })
-    expect(spawn.mock.calls[0]?.[1]).toMatchObject({ context: 'fresh' })
+    // A role and the work: no name, no label, and no context mode were typed.
+    expect(spawn.mock.calls[0]?.[1]).toEqual({ role: 'planner', prompt: 'split the migration up' })
+  })
+
+  it('sends a name only when the reader overrides the one the role would derive', async () => {
+    const spawn = vi.fn(() => Promise.resolve(remoteFailure('not reached')))
+    render(<TeamAction {...props(actions({ roles: () => Promise.resolve({ ok: true, value: TEAM_ROLES }), spawnTeammate: spawn }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    fireEvent.click(screen.getByRole('button', { name: zh.addTeammate }))
+    fireEvent.click(await screen.findByRole('radio', { name: /reviewer/u }))
+    fireEvent.change(screen.getByPlaceholderText(zh.teammatePrompt), { target: { value: 'read it' } })
+    fireEvent.change(screen.getByPlaceholderText('名称（留空则为 reviewer）'), { target: { value: 'security-pass' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.spawn }))
+
+    await waitFor(() => { expect(spawn).toHaveBeenCalledOnce() })
+    expect(spawn.mock.calls[0]?.[1]).toEqual({ role: 'reviewer', name: 'security-pass', prompt: 'read it' })
+  })
+
+  it('says so when a Team offers no roles at all', async () => {
+    render(<TeamAction {...props(actions({ roles: () => Promise.resolve({ ok: true, value: [] }) }))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
+    await screen.findByText('Implement runtime')
+    fireEvent.click(screen.getByRole('button', { name: zh.addTeammate }))
+    expect(await screen.findByText(zh.noRoles)).toBeTruthy()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: zh.spawn }).disabled).toBe(true)
   })
 
   it('stops following when the surface closes', async () => {

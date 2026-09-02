@@ -2147,3 +2147,81 @@ describe('Team mailbox and waiting', () => {
     })
   })
 })
+
+describe('Team roles', () => {
+  const ROLES = [
+    { id: 'reviewer', name: 'reviewer', description: 'Reads it back', brief: 'You review.', context: 'fresh' as const },
+    {
+      id: 'planner',
+      name: 'planner',
+      description: 'Breaks the work up',
+      brief: 'You plan.',
+      context: 'fresh' as const,
+      route: { provider: 'mock', model: 'big-model' },
+    },
+  ]
+
+  it('offers the built-in roles when a deployment configures none', async () => {
+    const { ctx, lead } = await setup([])
+    const offered = ctx.agentTeams.remoteRoles(lead)
+    expect(offered.map(role => role.id)).toEqual(['planner', 'implementer', 'reviewer', 'researcher'])
+    // Not one of them names a model, so nothing is moved off the Lead's route
+    // until a deployment says so.
+    expect(offered.every(role => role.route === undefined)).toBe(true)
+  })
+
+  it('refuses to load a role list that names one id twice', async () => {
+    await expect(setup([], {
+      roles: [
+        { id: 'reviewer', name: 'a', description: 'a', brief: 'a', context: 'fresh' },
+        { id: 'reviewer', name: 'b', description: 'b', brief: 'b', context: 'fresh' },
+      ],
+    })).rejects.toThrow(/declared twice/u)
+  })
+
+  it('staffs a teammate from a role, deriving the name and running it on the role’s model', async () => {
+    const { ctx, lead } = await setup([], { roles: ROLES })
+    const first = await ctx.agentTeams.staffTeammate(lead, { role: 'planner', prompt: 'split the migration up', signal: SIGNAL })
+    expect(first.member).toMatchObject({ name: 'planner', description: 'Breaks the work up' })
+    // The route reached the durable member, so the roster reports what this
+    // teammate runs on even once it has gone idle and has no live Agent.
+    const planner = ctx.agentTeams.remoteView(lead).members.find(member => member.name === 'planner')
+    expect(planner).toMatchObject({ roleId: 'planner', model: 'big-model' })
+
+    // A second teammate of the same role takes a free name rather than
+    // colliding on one the caller never chose.
+    const second = await ctx.agentTeams.staffTeammate(lead, { role: 'planner', prompt: 'and the rollback', signal: SIGNAL })
+    expect(second.member.name).toBe('planner-2')
+
+    // A role that names no model leaves its teammate on the Lead's.
+    await ctx.agentTeams.staffTeammate(lead, { role: 'reviewer', prompt: 'read it', signal: SIGNAL })
+    expect(ctx.agentTeams.remoteView(lead).members.find(member => member.name === 'reviewer'))
+      .toMatchObject({ roleId: 'reviewer', model: 'mock' })
+  })
+
+  it('rejects an unknown role by naming the ones this Team has', async () => {
+    const { ctx, lead } = await setup([], { roles: ROLES })
+    await expect(ctx.agentTeams.staffTeammate(lead, { role: 'tester', prompt: 'test it', signal: SIGNAL }))
+      .rejects.toThrow(/unknown Team role "tester"; this Team offers reviewer, planner/u)
+  })
+
+  it('carries a role rejection through the Remote as a business value', async () => {
+    const { ctx, lead } = await setup([], { roles: ROLES })
+    await expect(ctx.agentTeams.remoteSpawnTeammate(lead, { role: 'tester', prompt: 'test it' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'team-rejected' } })
+    // A hand-composed teammate still works, and still names itself.
+    await expect(ctx.agentTeams.remoteSpawnTeammate(lead, { name: 'writer', prompt: 'draft it' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'team-rejected' } })
+    await expect(ctx.agentTeams.remoteSpawnTeammate(lead, {
+      name: 'writer', description: 'Writes', prompt: 'draft it',
+    })).resolves.toMatchObject({ ok: true, value: { member: { name: 'writer', context: 'fresh' } } })
+  })
+
+  it('reads the roles under the same membership precondition as every other Remote', async () => {
+    const { ctx, lead } = await setup([])
+    expect(ctx.agentTeams.remoteRoles(lead)).not.toHaveLength(0)
+    // A stale identity is not a member, so it does not get a Team's answers.
+    const impostor = { ...lead } as Agent
+    expect(() => ctx.agentTeams.remoteRoles(impostor)).toThrow(expect.objectContaining({ code: 'TEAM_NOT_MEMBER' }))
+  })
+})

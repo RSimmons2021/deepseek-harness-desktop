@@ -18,10 +18,20 @@ interface TeamMemberSnapshot {
   readonly context: 'fresh' | 'fork'
   readonly phase: TeamMemberPhase
   readonly error?: string
+  /** The role this member was staffed from, when it was staffed from one. */
+  readonly roleId?: string
+  /**
+   * Where this member runs, recorded at creation.
+   *
+   * Durable rather than read from the live Agent, because a member that is not
+   * attached still runs on the route it was created with: reading only the live
+   * Agent made an idle routed teammate report the Lead's model instead.
+   */
+  readonly route?: TeamRoleRoute
 }
 ```
 
-每个 member 都从 `provisioning` 开始，并且只到达一个终态 roster phase：`active` 或 `failed`。运行时 `running`／`idle`／`inactive` 状态单独派生，绝不会重写该记录。
+从某个 role 配置而来的 member 会记录它来自哪个 role、以及它运行在何处，因此空闲成员仍然报告自己的模型，而不是 Lead 的。每个 member 都从 `provisioning` 开始，并且只到达一个终态 roster phase：`active` 或 `failed`。运行时 `running`／`idle`／`inactive` 状态单独派生，绝不会重写该记录。
 
 ## 持久 mailbox
 
