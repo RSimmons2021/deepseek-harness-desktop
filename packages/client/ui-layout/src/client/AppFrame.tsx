@@ -10,13 +10,14 @@
  * through the three framework shares — zero cordis or framework imports,
  * zero self-made hooks.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
 import { DragHandle } from './DragHandle.tsx'
+import { useFrameWidth, useSeamGestures } from './frame-geometry.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
@@ -57,7 +58,7 @@ export function AppFrame({
     return current === undefined ? undefined : s.byId[current]?.title
   })
   const frameRef = useRef<HTMLDivElement | null>(null)
-  const [viewport, setViewport] = useState(() => window.innerWidth)
+  const viewport = useFrameWidth(frameRef)
 
   const lastSession = useRef(detailsSession)
   useLayoutEffect(() => {
@@ -67,26 +68,6 @@ export function AppFrame({
     }
     lastSession.current = detailsSession
   }, [actions, detailsSession])
-
-  // Track the frame's own box (not the window): rAF-throttled ResizeObserver.
-  useEffect(() => {
-    const el = frameRef.current
-    /* v8 ignore next -- the ref is always attached by effect time: the frame div renders unconditionally. */
-    if (el === null) return
-    let raf: number | null = null
-    const observer = new ResizeObserver(() => {
-      raf ??= requestAnimationFrame(() => {
-        raf = null
-        const width = el.getBoundingClientRect().width
-        if (width > 0) setViewport(width)
-      })
-    })
-    observer.observe(el)
-    return () => {
-      observer.disconnect()
-      if (raf !== null) cancelAnimationFrame(raf)
-    }
-  }, [])
 
   // Narrow viewports auto-collapse the sidebar; the store mirror keeps
   // toggleSidebar's semantics right (narrow toggles flip the manual
@@ -104,23 +85,11 @@ export function AppFrame({
   const colsRef = useRef(cols)
   colsRef.current = cols
 
-  // The drag base is the rendered width captured at drag start (grabbing a
-  // concession-clamped panel must not jump back to the stored preference);
-  // it stays frozen for the whole gesture so dx deltas do not compound.
-  const sidebarBase = useRef(0)
-  const detailsBase = useRef(0)
   // Track-level transitions pause for the whole gesture: eased tracks would
   // detach the column edge from the pointer (AppFrame.module.css).
-  const [dragging, setDragging] = useState(false)
-  const onDragEnd = useCallback(() => { setDragging(false) }, [])
-  const onSidebarStart = useCallback(() => { sidebarBase.current = colsRef.current.sidebar; setDragging(true) }, [])
-  const onDetailsStart = useCallback(() => { detailsBase.current = colsRef.current.details; setDragging(true) }, [])
-  const onSidebarDrag = useCallback((dx: number) => {
-    actions.setSidebar(sidebarBase.current + dx)
-  }, [actions])
-  const onDetailsDrag = useCallback((dx: number) => {
-    actions.setDetails(detailsBase.current - dx)
-  }, [actions])
+  const { dragging, bind } = useSeamGestures()
+  const sidebarSeam = bind(() => colsRef.current.sidebar, actions.setSidebar, 'right')
+  const detailsSeam = bind(() => colsRef.current.details, actions.setDetails, 'left')
   const productTitle = process.env.DSH_CLIENT_TITLE ?? t('brand.localBuild')
 
   return (
@@ -163,10 +132,10 @@ export function AppFrame({
       </div>
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
       {!sidebarCollapsed && (
-        <DragHandle side="sidebar" left={cols.sidebar} label={t('layout.resizeSidebar')} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />
+        <DragHandle side="sidebar" left={cols.sidebar} label={t('layout.resizeSidebar')} {...sidebarSeam} />
       )}
       {cols.details > 0 && (
-        <DragHandle side="details" left={viewport - cols.details} label={t('layout.resizeDetails')} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />
+        <DragHandle side="details" left={viewport - cols.details} label={t('layout.resizeDetails')} {...detailsSeam} />
       )}
     </div>
   )

@@ -15,7 +15,7 @@ afterEach(cleanup)
 describe('tails', () => {
   it('AssistantMarkdown renders reasoning as a Think row and unknown blocks as JSON fallback', () => {
     const view = render(
-      <AssistantMarkdown
+      <AssistantMarkdown reasoningView="collapsed"
         t={t}
         blocks={[
           { kind: 'reasoning', text: 'thinking hard\nsecond line' },
@@ -30,7 +30,7 @@ describe('tails', () => {
     expect(view.getByText('thinking hard')).toBeTruthy()
     expect(view.getByText(/未知内容块/)).toBeTruthy()
     const stopped = render(
-      <AssistantMarkdown
+      <AssistantMarkdown reasoningView="collapsed"
         t={t}
         blocks={[{ kind: 'text', text: 'partial words' }]}
         streaming={false}
@@ -45,7 +45,7 @@ describe('tails', () => {
     // Tool heads are drawn by ChatView's tool groups; an empty root between
     // groups is layout noise (no text, no pulse, no interrupted marker).
     const empty = render(
-      <AssistantMarkdown
+      <AssistantMarkdown reasoningView="collapsed"
         t={t}
         blocks={[{ kind: 'tool-call', callId: 'c', name: 'todo_write', argsRaw: '{}' }]}
         streaming={false}
@@ -54,7 +54,7 @@ describe('tails', () => {
     )
     expect(empty.container.firstChild).toBeNull()
     const blank = render(
-      <AssistantMarkdown t={t} blocks={[]} streaming={false} renderMessageImages={renderMessageImages} />,
+      <AssistantMarkdown reasoningView="collapsed" t={t} blocks={[]} streaming={false} renderMessageImages={renderMessageImages} />,
     )
     expect(blank.container.firstChild).toBeNull()
   })

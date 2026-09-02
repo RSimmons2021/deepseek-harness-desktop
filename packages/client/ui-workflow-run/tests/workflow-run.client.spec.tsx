@@ -313,6 +313,7 @@ function panelProps(data: WorkflowRunChatData, sessions = listState(), openSessi
     useSessionPendingInteraction: selector => selector(panelAttention),
     useSession: selector => selector(panelSession),
     useProjection: () => undefined,
+    reasoningView: 'collapsed',
     useConversation: selector => selector(panelConversation),
     useChat: selector => selector(panelChat),
     useTrajectory: selector => selector(panelTrajectory),

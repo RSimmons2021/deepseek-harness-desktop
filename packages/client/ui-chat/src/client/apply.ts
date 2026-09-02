@@ -29,8 +29,12 @@ import { DetailsPanel } from './details/DetailsPanel.tsx'
 import { en, NS, zh } from './locale.ts'
 import { TranscriptViewRow, type TranscriptViewRowInjected } from './settings/TranscriptViewRow.tsx'
 import { createChatStore } from './stores.ts'
-import { TranscriptViewPolicy } from './transcript-view.ts'
-import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../chat-settings.ts'
+import { ChatSettingPolicy } from './chat-setting-policy.ts'
+import { ReasoningViewRow, type ReasoningViewRowInjected } from './settings/ReasoningViewRow.tsx'
+import {
+  CHAT_SETTINGS_NAMESPACE, DEFAULT_REASONING_VIEW_MODE, DEFAULT_TRANSCRIPT_VIEW_MODE,
+  REASONING_VIEW_FIELD, TRANSCRIPT_VIEW_FIELD, type ChatSettings,
+} from '../chat-settings.ts'
 
 const CHAT_NODE_INJECT: ChatNodeTurnDataInjected = {
   hooks: {
@@ -80,9 +84,9 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind(NS)
   const chatStore = createChatStore()
   const chatScrollPositions = new Map<SessionId, ChatScrollPosition>()
-  const transcriptView = new TranscriptViewPolicy(
-    ctx.settingsScope.bind<ChatSettings>({ namespace: CHAT_SETTINGS_NAMESPACE }),
-  )
+  const chatSettings = ctx.settingsScope.bind<ChatSettings>({ namespace: CHAT_SETTINGS_NAMESPACE })
+  const transcriptView = new ChatSettingPolicy(chatSettings, TRANSCRIPT_VIEW_FIELD, DEFAULT_TRANSCRIPT_VIEW_MODE)
+  const reasoningView = new ChatSettingPolicy(chatSettings, REASONING_VIEW_FIELD, DEFAULT_REASONING_VIEW_MODE)
 
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item',
@@ -94,6 +98,17 @@ export function apply(ctx: Context): void {
       setTranscriptView: (mode) => { transcriptView.setMode(mode) },
     }),
   }, TranscriptViewRow))
+
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'reasoning-view',
+    order: 13,
+    locale: NS,
+    inject: (): ReasoningViewRowInjected => ({
+      hooks: { reasoningView: reasoningView.mode },
+      setReasoningView: (mode) => { reasoningView.setMode(mode) },
+    }),
+  }, ReasoningViewRow))
 
   ctx.slots.inject('conversation.view', () => {
     const disposeView = ctx.slots.register({
@@ -111,7 +126,7 @@ export function apply(ctx: Context): void {
         const session = ctx.sessions.binding(sessionId)?.session
         if (session === undefined) throw new Error(`ui-chat: unknown session "${sessionId}"`)
         return {
-          hooks: { transcriptView: transcriptView.mode },
+          hooks: { transcriptView: transcriptView.mode, reasoningView: reasoningView.mode },
           openDetails: (target) => {
             actions.select(target)
             ctx.layout.openDetails()

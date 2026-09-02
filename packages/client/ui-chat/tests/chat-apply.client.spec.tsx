@@ -15,7 +15,7 @@ import {
   apply as applyChat, EMPTY_CHAT_SNAPSHOT, inject as injectChat,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {
-  ChatNodeTurnDataInjected, ChatSnapshot, TranscriptViewRowInjected, UseChat,
+  ChatNodeTurnDataInjected, ChatSnapshot, ReasoningViewRowInjected, TranscriptViewRowInjected, UseChat,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
 
@@ -79,7 +79,7 @@ describe('Chat apply wiring', () => {
     expect(b.runtime.slots.entries('conversation.composer.dock').map(row => row.options.id))
       .toEqual(['stats'])
     expect(b.runtime.slots.entries('settings.general.item').map(row => row.options.id))
-      .toEqual(['transcript-view', 'composer-enter'])
+      .toEqual(['transcript-view', 'reasoning-view', 'composer-enter'])
     expect(b.runtime.slots.entries('details')).toHaveLength(1)
     await b.runtime.dispose()
   })
@@ -96,9 +96,28 @@ describe('Chat apply wiring', () => {
     expect(b.chatSettings.set).toHaveBeenCalledWith('transcriptView', 'normal')
 
     b.chatSettings.publish({
-      status: 'ready', value: { transcriptView: 'compact' }, revision: 1, writable: true,
+      status: 'ready', value: { transcriptView: 'compact', reasoningView: 'streaming' }, revision: 1, writable: true,
     })
     expect(face.hooks.transcriptView.getSnapshot()).toBe('compact')
+    await b.runtime.dispose()
+  })
+
+  it('mirrors the Host reasoning preference into its own Settings row', async () => {
+    const b = await bench()
+    const row = b.runtime.slots.entries('settings.general.item')
+      .find(entry => entry.options.id === 'reasoning-view')!
+    const face = (row.inject as unknown as () => ReasoningViewRowInjected)()
+
+    expect(face.hooks.reasoningView.getSnapshot()).toBe('streaming')
+    face.setReasoningView('expanded')
+    expect(face.hooks.reasoningView.getSnapshot()).toBe('expanded')
+    expect(b.chatSettings.set).toHaveBeenCalledWith('reasoningView', 'expanded')
+
+    // One accepted section feeds both rows; each takes only its own field.
+    b.chatSettings.publish({
+      status: 'ready', value: { transcriptView: 'normal', reasoningView: 'collapsed' }, revision: 1, writable: true,
+    })
+    expect(face.hooks.reasoningView.getSnapshot()).toBe('collapsed')
     await b.runtime.dispose()
   })
 

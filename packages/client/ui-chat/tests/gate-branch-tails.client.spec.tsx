@@ -82,7 +82,7 @@ function emptyWorkspaces() {
 describe('render branch tails', () => {
   it('AssistantMarkdown reasoning row is ok-state when not the streaming tail', () => {
     const view = render(
-      <AssistantMarkdown
+      <AssistantMarkdown reasoningView="collapsed"
         t={t}
         blocks={[{ kind: 'reasoning', text: 'done thinking' }, { kind: 'text', text: 'answer' }]}
         streaming
@@ -117,7 +117,7 @@ describe('render branch tails', () => {
 
   it('AssistantMarkdown reasoning as the streaming tail renders the running ring', () => {
     const view = render(
-      <AssistantMarkdown
+      <AssistantMarkdown reasoningView="collapsed"
         t={t}
         blocks={[{ kind: 'reasoning', text: 'still thinking' }]}
         streaming

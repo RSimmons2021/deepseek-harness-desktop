@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { SettingsProvider, settingsNamespace, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
-  CHAT_SETTINGS_NAMESPACE, DEFAULT_TRANSCRIPT_VIEW_MODE, apply,
+  CHAT_SETTINGS_NAMESPACE, DEFAULT_REASONING_VIEW_MODE, DEFAULT_TRANSCRIPT_VIEW_MODE, apply,
 } from '../src/index.ts'
 
 class MemorySettings extends SettingsProvider {
@@ -14,17 +14,28 @@ class MemorySettings extends SettingsProvider {
 }
 
 describe('ui-chat Host settings', () => {
-  it('registers, validates, and disposes the transcript-view namespace', async () => {
+  it('registers, validates, and disposes the Chat presentation namespace', async () => {
     const ctx = new Context()
     await ctx.plugin(MemorySettings).await()
     const fiber = ctx.plugin({ apply })
     await fiber.await()
     const ns = settingsNamespace(CHAT_SETTINGS_NAMESPACE)
 
-    expect(ctx.settings.get(ns)).toEqual({ transcriptView: DEFAULT_TRANSCRIPT_VIEW_MODE })
+    expect(ctx.settings.get(ns)).toEqual({
+      transcriptView: DEFAULT_TRANSCRIPT_VIEW_MODE,
+      reasoningView: DEFAULT_REASONING_VIEW_MODE,
+    })
     await ctx.settings.update(ns, { transcriptView: 'normal' })
-    expect(ctx.settings.get(ns)).toEqual({ transcriptView: 'normal' })
+    expect(ctx.settings.get(ns)).toEqual({
+      transcriptView: 'normal',
+      reasoningView: DEFAULT_REASONING_VIEW_MODE,
+    })
+    // Each field validates on its own, and an update to one leaves the other
+    // at whatever the document already accepted.
+    await ctx.settings.update(ns, { reasoningView: 'expanded' })
+    expect(ctx.settings.get(ns)).toEqual({ transcriptView: 'normal', reasoningView: 'expanded' })
     await expect(ctx.settings.update(ns, { transcriptView: 'dense' })).rejects.toThrow()
+    await expect(ctx.settings.update(ns, { reasoningView: 'verbose' })).rejects.toThrow()
 
     await fiber.dispose()
     expect(ctx.settings.describe().map(row => row.ns)).not.toContain(ns)

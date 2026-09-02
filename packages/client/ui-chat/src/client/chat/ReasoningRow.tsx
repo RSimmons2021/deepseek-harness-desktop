@@ -1,6 +1,7 @@
 /** Assistant reasoning disclosure, independent of Tool-call presentation. */
 import { useEffect, useRef, useState } from 'react'
 import { DisclosureRow, IconThinkOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ReasoningViewMode } from '../../chat-settings.ts'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { useThrottledVisualUpdate } from './use-throttled-visual-update.ts'
 import a11yCss from './accessibility.module.css'
@@ -17,15 +18,38 @@ function latestLine(text: string): string {
   return newline === -1 ? visible : visible.slice(newline + 1)
 }
 
+/** One reasoning block's presentation inputs. */
+export interface ReasoningRowProps {
+  /** Complete or streaming reasoning text. */
+  text: string
+  /** Whether this block is the streaming tail. */
+  running: boolean
+  /** How much reasoning the reader asked to see. */
+  view: ReasoningViewMode
+  /** Conversation locale seat for the running status. */
+  t: ChatViewSlotProps['t']
+}
+
 /**
  * Render one assistant reasoning block as the Think disclosure row.
- * @param props.text - complete or streaming reasoning text.
- * @param props.running - whether this block is the streaming tail.
- * @param props.t - conversation locale seat for the running status.
+ *
+ * The preference decides what the row does on its own; a click always wins over
+ * it, for this row only, until the block stops running. That is what lets
+ * `streaming` open the thinking as it arrives and close it when the answer
+ * begins without ever shutting a row the reader deliberately opened.
+ * @param props - the text, whether it is still arriving, the preference, and the locale seat.
  * @returns the reasoning disclosure.
  */
-export function ReasoningRow({ text, running, t }: { text: string; running: boolean; t: ChatViewSlotProps['t'] }) {
-  const [expanded, setExpanded] = useState(false)
+export function ReasoningRow({ text, running, view, t }: ReasoningRowProps) {
+  const [override, setOverride] = useState<boolean | null>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const expanded = override ?? (view === 'expanded' || (view === 'streaming' && running))
+  // A row the reader opened during the thinking goes back to following the
+  // preference once the thinking is over, so an explicit peek does not pin one
+  // block open for the life of the transcript.
+  useEffect(() => {
+    if (!running) setOverride(null)
+  }, [running])
   const summaryRef = useRef<HTMLSpanElement>(null)
   const summary = running ? latestLine(text) : firstLine(text)
   const scheduleSummaryScroll = useThrottledVisualUpdate(() => {
@@ -36,6 +60,17 @@ export function ReasoningRow({ text, running, t }: { text: string; running: bool
   useEffect(() => {
     scheduleSummaryScroll()
   }, [running, scheduleSummaryScroll, summary])
+
+  // An open, still-arriving body follows its own tail, so the newest sentence
+  // is the one on screen rather than the one the reader has to scroll to.
+  const scheduleBodyScroll = useThrottledVisualUpdate(() => {
+    const element = bodyRef.current
+    if (element === null) return
+    element.scrollTop = element.scrollHeight
+  })
+  useEffect(() => {
+    if (expanded && running) scheduleBodyScroll()
+  }, [expanded, running, scheduleBodyScroll, text])
 
   return (
     <div className={css.root} data-variant="think" data-state={running ? 'running' : 'ok'}>
@@ -50,7 +85,7 @@ export function ReasoningRow({ text, running, t }: { text: string; running: bool
         open={expanded}
         expandable
         expandOnRowClick
-        onToggle={() => { setExpanded(value => !value) }}
+        onToggle={() => { setOverride(!expanded) }}
         collapsedContent={(
           <>
             <span className={css.separator} aria-hidden />
@@ -58,7 +93,7 @@ export function ReasoningRow({ text, running, t }: { text: string; running: bool
           </>
         )}
       >
-        <div className={css.thinkBody}>{text}</div>
+        <div ref={bodyRef} className={css.thinkBody} data-following={expanded && running || undefined}>{text}</div>
       </DisclosureRow>
     </div>
   )

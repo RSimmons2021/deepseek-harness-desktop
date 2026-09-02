@@ -8,13 +8,14 @@
  * reader can move. Pure component: everything arrives through the framework
  * shares.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import type { ReactNode } from 'react'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import { computeDesktopColumns } from './columns.ts'
 import { DragHandle } from './DragHandle.tsx'
+import { useFrameWidth, useSeamGestures } from './frame-geometry.ts'
 import type { createLayoutStore } from './stores.ts'
 import css from './DesktopFrame.module.css'
 
@@ -46,28 +47,7 @@ export function DesktopFrame({ useStore, useSessions, actions, renderSlot, Sessi
     return current === undefined || sessions.byId[current]?.blank !== false
   })
   const frameRef = useRef<HTMLDivElement | null>(null)
-  const [viewport, setViewport] = useState(() => window.innerWidth)
-
-  // Track the frame's own box rather than the window, so a resize the window
-  // manager drives and one a column drag drives are the same measurement.
-  useEffect(() => {
-    const el = frameRef.current
-    /* v8 ignore next -- the ref is always attached by effect time: the frame div renders unconditionally. */
-    if (el === null) return
-    let raf: number | null = null
-    const observer = new ResizeObserver(() => {
-      raf ??= requestAnimationFrame(() => {
-        raf = null
-        const width = el.getBoundingClientRect().width
-        if (width > 0) setViewport(width)
-      })
-    })
-    observer.observe(el)
-    return () => {
-      observer.disconnect()
-      if (raf !== null) cancelAnimationFrame(raf)
-    }
-  }, [])
+  const viewport = useFrameWidth(frameRef)
 
   // The store's width preference IS the open/closed state: zero resolves to the
   // compact control rail, which stays mounted so the sidebar occupant keeps its
@@ -84,24 +64,14 @@ export function DesktopFrame({ useStore, useSessions, actions, renderSlot, Sessi
   const colsRef = useRef(cols)
   colsRef.current = cols
 
-  // Each gesture holds the width its column was rendered at when the drag
-  // started, so a column the concession chain had already clamped does not jump
-  // back to its stored preference, and deltas never compound.
-  const sidebarBase = useRef(0)
-  const conversationBase = useRef(0)
-  const detailsBase = useRef(0)
   // Track transitions pause for the whole gesture: an eased track would detach
   // the column edge from the pointer.
-  const [dragging, setDragging] = useState(false)
-  const onDragEnd = useCallback(() => { setDragging(false) }, [])
-  const onSidebarStart = useCallback(() => { sidebarBase.current = colsRef.current.sidebar; setDragging(true) }, [])
-  const onConversationStart = useCallback(() => { conversationBase.current = colsRef.current.conversation; setDragging(true) }, [])
-  const onDetailsStart = useCallback(() => { detailsBase.current = colsRef.current.details; setDragging(true) }, [])
-  const onSidebarDrag = useCallback((dx: number) => { actions.setSidebar(sidebarBase.current + dx) }, [actions])
+  const { dragging, bind } = useSeamGestures()
+  const sidebarSeam = bind(() => colsRef.current.sidebar, actions.setSidebar, 'right')
   // The workspace and conversation share one seam: dragging it right gives the
   // workspace the room and takes it from the conversation.
-  const onConversationDrag = useCallback((dx: number) => { actions.setConversation(conversationBase.current - dx) }, [actions])
-  const onDetailsDrag = useCallback((dx: number) => { actions.setDetails(detailsBase.current - dx) }, [actions])
+  const workspaceSeam = bind(() => colsRef.current.conversation, actions.setConversation, 'left')
+  const detailsSeam = bind(() => colsRef.current.details, actions.setDetails, 'left')
 
   const workspaceEdge = cols.sidebar + cols.workspace
 
@@ -135,9 +105,7 @@ export function DesktopFrame({ useStore, useSessions, actions, renderSlot, Sessi
           side="sidebar"
           left={cols.sidebar}
           label={t('layout.resizeSidebar')}
-          onStart={onSidebarStart}
-          onDrag={onSidebarDrag}
-          onEnd={onDragEnd}
+          {...sidebarSeam}
         />
       )}
       {cols.workspace > 0 && cols.conversation > 0 && (
@@ -145,9 +113,7 @@ export function DesktopFrame({ useStore, useSessions, actions, renderSlot, Sessi
           side="workspace"
           left={workspaceEdge}
           label={t('layout.resizeWorkspace')}
-          onStart={onConversationStart}
-          onDrag={onConversationDrag}
-          onEnd={onDragEnd}
+          {...workspaceSeam}
         />
       )}
       {cols.details > 0 && (
@@ -155,9 +121,7 @@ export function DesktopFrame({ useStore, useSessions, actions, renderSlot, Sessi
           side="details"
           left={viewport - cols.details}
           label={t('layout.resizeDetails')}
-          onStart={onDetailsStart}
-          onDrag={onDetailsDrag}
-          onEnd={onDragEnd}
+          {...detailsSeam}
         />
       )}
     </div>

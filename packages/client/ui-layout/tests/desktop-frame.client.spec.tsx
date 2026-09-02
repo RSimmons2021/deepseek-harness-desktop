@@ -49,7 +49,7 @@ function mountFrame() {
     byId: { 's-test': { id: 's-test', displayTitle: 'Test', running: false, blank: sessionBlank.current, updatedAt: 1 } },
     current: 's-test' as SessionId,
     phase: 'ready',
-  } as SessionListState)) as never
+  } as unknown as SessionListState)) as never
   const element = () => (
     <DesktopFrame
       useStore={hookOf(instance)}
@@ -57,6 +57,10 @@ function mountFrame() {
       renderSlot={renderSlot}
       useSessions={useSessions}
       SessionProvider={SessionProviderStub}
+      useSessionPendingInteraction={((selector: (s: unknown) => unknown) => selector(new Map())) as never}
+      useWorkspaces={((selector: (s: unknown) => unknown) => selector({
+        items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+      })) as never}
       t={key => key}
     />
   )

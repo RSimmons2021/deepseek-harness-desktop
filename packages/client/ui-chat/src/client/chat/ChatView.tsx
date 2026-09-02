@@ -203,7 +203,7 @@ function TurnStatus({ startTime, t }: {
  */
 export function ChatView({
   useSession, useChat, useSessions, useStore, actions, renderSlot, sessionId, openFile, loadOlder, loadImage, openView, chatScroll, forkAt,
-  fileMentions, useTranscriptView, t,
+  fileMentions, useTranscriptView, useReasoningView, t,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
   const nodeStore = useChat(s => s.nodes)
@@ -222,6 +222,7 @@ export function ChatView({
   const loadingOlder = useSession(s => s.loadingOlder)
   const selectedCallId = useStore(s => s.selection?.callId)
   const compactTranscript = useTranscriptView(mode => mode === 'compact')
+  const reasoningView = useReasoningView(mode => mode)
   const inspectCall = useCallback((callId: string) => {
     openView('trajectory', callId)
   }, [openView])
@@ -598,6 +599,7 @@ export function ChatView({
               nodeKey={nodeKey}
               historyIncomplete={hasMore}
               compactTranscript={compactTranscript}
+              reasoningView={reasoningView}
               useChat={useChat}
               useStore={useStore}
               actions={actions}

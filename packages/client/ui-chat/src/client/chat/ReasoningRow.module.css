@@ -71,6 +71,10 @@
 .thinkBody {
   /* Indent under the title, which starts at leading (16 + delta) + gap 6. */
   padding: 4px 0 4px calc(22px + var(--dsh-content-font-delta, 0px));
+  /* A settled block is as long as it is; one still arriving is bounded and
+     follows its own tail, so a long think does not push the answer off screen
+     while the reader is waiting for it. */
+  overflow: hidden;
   color: var(--dsw-alias-label-tertiary);
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
@@ -82,4 +86,12 @@
   .root[data-state='running'] .row::after {
     animation: none;
   }
+}
+
+.thinkBody[data-following] {
+  max-height: 168px;
+  overflow-y: auto;
+  /* The oldest visible lines fade out, so the block reads as a window onto
+     something longer rather than as the whole of it. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
 }
