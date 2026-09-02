@@ -1,4 +1,20 @@
-/** Host loader entry for the browser-only layout plugin. */
+/** Host registration for the browser layout preference. */
 
-/** Provides no host-side behavior. */
-export function apply(): void {}
+import type { Context } from '@deepseek-ai/cordis'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { LAYOUT_SETTINGS_NAMESPACE, LayoutSettingsSchema } from './layout-settings.ts'
+
+export {
+  DEFAULT_LAYOUT_PRESET, LAYOUT_PRESET_FIELD, LAYOUT_PRESETS, LAYOUT_SETTINGS_NAMESPACE,
+  type LayoutPresetId, type LayoutSettings,
+} from './layout-settings.ts'
+
+/** Register the durable layout settings section when a provider exists. */
+export function apply(ctx: Context): void {
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.register(
+      settingsNamespace(LAYOUT_SETTINGS_NAMESPACE),
+      LayoutSettingsSchema,
+    )
+  })
+}

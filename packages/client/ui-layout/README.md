@@ -25,6 +25,8 @@ This package provides the shell layout of the Web GUI: a three-column AppFrame w
 <a id="use-this-package"></a>
 ## Use this package
 
+Settings → General carries the window's arrangement: **Balanced**, **Workspace first** (the session rail collapses and the conversation goes to its floor, so the Team takes the window), **Conversation first**, and **Everything open** (the details column opens alongside the rest). The arrangement is a durable preference in the `ui-layout` namespace; the widths it produces are not. A preset writes width preferences rather than resolved tracks, so one asking for more than the window has concedes exactly as the same widths reached by dragging would, and dragging afterwards changes the window without renaming what it started from. That split is what makes an arrangement survive a reload while a nudged geometry does not.
+
 Mount this plugin at the root slot; it then renders the app frame around whatever occupies the sidebar, conversation, and details columns. Users resize the sidebar by dragging its invisible hit strip and the details panel by dragging its floating pill; when the window narrows, only details shrinks, then auto-closes. A closed sidebar retains a 56px control rail; details closes to zero width.
 
 ### Theme presentation

@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
 import {
-  CONVERSATION_DEFAULT,
+  CONVERSATION_DEFAULT, PRESET_GEOMETRY,
   DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
   SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
@@ -21,6 +21,7 @@ describe('createLayoutStore', () => {
   it('initializes the sidebar at its default width, details closed, wide viewport assumed', () => {
     const { store } = createLayoutStore().create()
     expect(store.getSnapshot()).toEqual({
+      preset: 'balanced',
       sidebar: SIDEBAR_DEFAULT, conversation: CONVERSATION_DEFAULT, details: 0, narrow: false, narrowExpanded: false,
     })
   })
@@ -59,6 +60,7 @@ describe('createLayoutStore', () => {
     actions.setNarrow(true)
     actions.toggleSidebar()
     expect(store.getSnapshot()).toEqual({
+      preset: 'balanced',
       sidebar: 400, conversation: CONVERSATION_DEFAULT, details: 0, narrow: true, narrowExpanded: true,
     })
     actions.toggleSidebar()
@@ -99,11 +101,32 @@ describe('createLayoutStore', () => {
 
     const second = createLayoutStore().create()
     expect(second.store.getSnapshot()).toEqual({
+      preset: 'balanced',
       sidebar: SIDEBAR_DEFAULT,
       conversation: CONVERSATION_DEFAULT,
       details: 0,
       narrow: false,
       narrowExpanded: false,
     })
+  })
+})
+
+describe('layout presets', () => {
+  it('rearranges every width and records which arrangement produced them', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.applyPreset('everything')
+    expect(store.getSnapshot()).toMatchObject({
+      preset: 'everything',
+      ...PRESET_GEOMETRY.everything,
+    })
+  })
+
+  it('leaves the named arrangement alone when a column is dragged', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.applyPreset('workspace')
+    actions.setSidebar(320)
+    // A preset is where the layout starts, not a mode it stays in: dragging
+    // afterwards changes the window without renaming what it started from.
+    expect(store.getSnapshot()).toMatchObject({ preset: 'workspace', sidebar: 320 })
   })
 })

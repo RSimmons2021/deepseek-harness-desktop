@@ -9,6 +9,7 @@
  * declared action set, delivered as the registration's bound actions.
  */
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
+import type { LayoutPresetId } from '../layout-settings.ts'
 import type { createLayoutStore } from './stores.ts'
 
 /** The layout store's bound action set (framework-baked, draft params peeled). */
@@ -27,6 +28,8 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Rearrange the window to one named layout. */
+  applyPreset(preset: LayoutPresetId): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -57,6 +60,14 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  /**
+   * Rearrange the window to one named layout.
+   * @param preset - the arrangement to start from.
+   */
+  applyPreset(preset: LayoutPresetId): void {
+    this.#require().applyPreset(preset)
   }
 
   #require(): PanelActions {

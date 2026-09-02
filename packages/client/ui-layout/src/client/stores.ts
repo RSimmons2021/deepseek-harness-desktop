@@ -8,9 +8,10 @@
  * receives the bound actions through the registration's inject hook.
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
+import { DEFAULT_LAYOUT_PRESET, type LayoutPresetId } from '../layout-settings.ts'
 import {
-  clampWidth, CONVERSATION_DEFAULT, CONVERSATION_MAX, CONVERSATION_MIN,
-  DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
+  clampWidth, CONVERSATION_MAX, CONVERSATION_MIN,
+  DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN, PRESET_GEOMETRY,
   SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from './columns.ts'
 
@@ -22,6 +23,8 @@ import {
  * sidebar over the squeezed center without rewriting the width preference.
  */
 type LayoutState = {
+  /** The named arrangement the widths below started from. */
+  preset: LayoutPresetId
   sidebar: number
   /** Desktop only: the conversation reads beside the workspace, which takes the remainder. */
   conversation: number
@@ -36,6 +39,7 @@ type LayoutState = {
  */
 type LayoutActions = {
   setSidebar: (draft: LayoutState, px: number) => void
+  applyPreset: (draft: LayoutState, preset: LayoutPresetId) => void
   setConversation: (draft: LayoutState, px: number) => void
   setDetails: (draft: LayoutState, px: number) => void
   toggleSidebar: (draft: LayoutState) => void
@@ -57,14 +61,22 @@ type LayoutActions = {
 export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
   const handle = defineStore({
     init: (): LayoutState => ({
-      sidebar: SIDEBAR_DEFAULT,
-      conversation: CONVERSATION_DEFAULT,
-      details: 0,
+      preset: DEFAULT_LAYOUT_PRESET,
+      ...PRESET_GEOMETRY[DEFAULT_LAYOUT_PRESET],
       narrow: false,
       narrowExpanded: false,
     }),
     actions: {
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
+      // A preset is where the layout starts, not a mode: the columns stay
+      // draggable afterwards and a drag does not change which preset is named.
+      applyPreset: (d, preset: LayoutPresetId) => {
+        const geometry = PRESET_GEOMETRY[preset]
+        d.preset = preset
+        d.sidebar = geometry.sidebar
+        d.conversation = geometry.conversation
+        d.details = geometry.details
+      },
       setConversation: (d, px: number) => { d.conversation = clampWidth(px, CONVERSATION_MIN, CONVERSATION_MAX) },
       setDetails: (d, px: number) => { d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX) },
       // Narrow toggles flip only the override: the width preference survives

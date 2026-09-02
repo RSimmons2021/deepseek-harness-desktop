@@ -8,6 +8,7 @@
  * presenter, which projects ctx.theme snapshots onto document.body.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -18,6 +19,9 @@ import { DesktopFrame } from './DesktopFrame.tsx'
 import { createLayoutStore } from './stores.ts'
 import { LayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
+import { LayoutPresetRow, type LayoutPresetRowInjected } from './settings/LayoutPresetRow.tsx'
+import { bindLayoutPreference } from './layout-preference.ts'
+import { LAYOUT_SETTINGS_NAMESPACE, type LayoutSettings } from '../layout-settings.ts'
 
 // Contract exports only (export-convergence rule: cross-package consumers
 // keep a symbol exported; test-only/package-internal symbols live off /src).
@@ -167,6 +171,33 @@ export function apply(ctx: ClientContext): void {
       void disposeService()
     }
   }, 'ui-layout: service + root registration')
+
+  /*
+   * The window's arrangement is a preference; the widths it produces are not.
+   * A preset is stored and re-applied on load, while a drag stays transient —
+   * so reopening the app restores the arrangement the reader chose rather than
+   * a geometry they nudged once.
+   */
+  ctx.effect(() => {
+    const preference = bindLayoutPreference(
+      ctx.settingsScope.bind<LayoutSettings>({ namespace: LAYOUT_SETTINGS_NAMESPACE }),
+      (preset) => { layout.applyPreset(preset) },
+    )
+    const disposeRow = ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+      name: 'settings.general.item',
+      id: 'layout-preset',
+      order: 10,
+      locale: 'common',
+      inject: (): LayoutPresetRowInjected => ({
+        hooks: { layoutPreset: preference.current },
+        setLayoutPreset: preference.set,
+      }),
+    }, LayoutPresetRow))
+    return () => {
+      preference.dispose()
+      disposeRow()
+    }
+  }, 'ui-layout: window arrangement preference')
 
   // Theme presentation: pure DOM writes from resolved snapshots — initial
   // state through the getter once, then event-driven only; no React path.

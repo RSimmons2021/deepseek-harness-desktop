@@ -120,9 +120,15 @@ describe('ui-layout client apply', () => {
 })
 
 describe('node half + invariant companion', () => {
-  it('node apply is an intentional no-op (loader-managed lifecycle only)', () => {
-    nodeApply()
-    expect(true).toBe(true) // reaching here without throw is the contract
+  it('registers the durable layout section when a settings provider exists', () => {
+    const register = vi.fn()
+    const inject = vi.fn((_needs: string[], run: (scoped: unknown) => void) => { run({ settings: { register } }) })
+    nodeApply({ inject } as never)
+    expect(inject).toHaveBeenCalledWith(['settings'], expect.any(Function))
+    // The window arrangement is a preference, so it lives in the Host document
+    // beside every other one rather than in this browser's own storage.
+    expect(register).toHaveBeenCalledOnce()
+    expect(String(register.mock.calls[0]?.[0])).toContain('ui-layout')
   })
 
   it('invariant companion registers under the package name', async () => {

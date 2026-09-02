@@ -12,6 +12,7 @@
  * the effective sidebar preference before solving; the solver itself stays
  * breakpoint-free.
  */
+import type { LayoutPresetId } from '../layout-settings.ts'
 
 /** Resolved widths for one frame; center may drop below CENTER_MIN only at the final fallback. */
 export interface Columns { sidebar: number; center: number; details: number }
@@ -139,4 +140,27 @@ export function computeDesktopColumns(
 
   // Step 5: the workspace absorbs the rest, below its floor if it must.
   return { sidebar: s, workspace: Math.max(0, viewport - s - c1), conversation: c1, details: 0 }
+}
+
+/** The three width preferences one named arrangement sets. */
+export interface PresetGeometry {
+  readonly sidebar: number
+  readonly conversation: number
+  readonly details: number
+}
+
+/**
+ * The widths each named arrangement starts the window at.
+ *
+ * A preset writes preferences, not resolved tracks: the concession chain still
+ * decides what actually fits, so a preset that asks for more than the window
+ * has degrades exactly the way a drag to the same width would.
+ */
+export const PRESET_GEOMETRY: Readonly<Record<LayoutPresetId, PresetGeometry>> = {
+  balanced: { sidebar: SIDEBAR_DEFAULT, conversation: CONVERSATION_DEFAULT, details: 0 },
+  // The session rail collapses and the conversation goes to its floor, so the
+  // workspace absorbs everything left.
+  workspace: { sidebar: 0, conversation: CONVERSATION_MIN, details: 0 },
+  conversation: { sidebar: SIDEBAR_DEFAULT, conversation: CONVERSATION_MAX, details: 0 },
+  everything: { sidebar: SIDEBAR_DEFAULT, conversation: CONVERSATION_DEFAULT, details: DETAILS_DEFAULT },
 }

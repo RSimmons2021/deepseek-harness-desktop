@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
+  RemoteSpawnTeammateRequest,
   TeamActivityEntry, TeamRole, TeamTailLine, TeamTaskId, TeamTaskView as TeamTask, TeamView,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -1555,7 +1556,8 @@ describe('TeamAction', () => {
   })
 
   it('staffs a teammate from a role and the work, and nothing else', async () => {
-    const spawn = vi.fn(() => Promise.resolve(remoteFailure('not reached')))
+    const spawn = vi.fn((_session: SessionId, _request: RemoteSpawnTeammateRequest) =>
+      Promise.resolve(remoteFailure('not reached')))
     render(<TeamAction {...props(actions({ roles: () => Promise.resolve({ ok: true, value: TEAM_ROLES }), spawnTeammate: spawn }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
@@ -1582,7 +1584,8 @@ describe('TeamAction', () => {
   })
 
   it('sends a name only when the reader overrides the one the role would derive', async () => {
-    const spawn = vi.fn(() => Promise.resolve(remoteFailure('not reached')))
+    const spawn = vi.fn((_session: SessionId, _request: RemoteSpawnTeammateRequest) =>
+      Promise.resolve(remoteFailure('not reached')))
     render(<TeamAction {...props(actions({ roles: () => Promise.resolve({ ok: true, value: TEAM_ROLES }), spawnTeammate: spawn }))} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')

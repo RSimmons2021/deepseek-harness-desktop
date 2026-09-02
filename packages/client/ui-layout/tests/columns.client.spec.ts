@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CENTER_MIN, clampWidth, computeColumns, computeDesktopColumns,
+  CENTER_MIN, clampWidth, computeColumns, computeDesktopColumns, PRESET_GEOMETRY,
   CONVERSATION_DEFAULT, CONVERSATION_MIN,
   DETAILS_DEFAULT, DETAILS_MIN, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT, SIDEBAR_MIN,
   WORKSPACE_MIN,
 } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
+import { LAYOUT_PRESETS } from '@deepseek-ai/dsh-client-ui-layout/src/layout-settings.ts'
 
 // Numeric preference form (0 = closed); helpers keep the scenario names readable.
 const open = (width: number) => width
@@ -165,5 +166,36 @@ describe('computeDesktopColumns', () => {
   it('never resolves a negative track', () => {
     const cols = computeDesktopColumns(200, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
     expect(cols.workspace).toBe(0)
+  })
+})
+
+describe('PRESET_GEOMETRY', () => {
+  it('gives every named arrangement its own widths', () => {
+    // The names have to mean different windows, or the choice is decorative.
+    const shapes = LAYOUT_PRESETS.map(id => JSON.stringify(PRESET_GEOMETRY[id]))
+    expect(new Set(shapes).size).toBe(LAYOUT_PRESETS.length)
+  })
+
+  it('hands the window to the column each arrangement is named for', () => {
+    const room = (id: (typeof LAYOUT_PRESETS)[number]): number => {
+      const g = PRESET_GEOMETRY[id]
+      return computeDesktopColumns(1920, g.sidebar, g.conversation, g.details).workspace
+    }
+    // Workspace first leaves the most room for the hero and Conversation first
+    // the least, which is the whole of what the names promise.
+    expect(room('workspace')).toBeGreaterThan(room('balanced'))
+    expect(room('balanced')).toBeGreaterThan(room('conversation'))
+    expect(PRESET_GEOMETRY.workspace.sidebar).toBe(0)
+    expect(PRESET_GEOMETRY.everything.details).toBe(DETAILS_DEFAULT)
+    expect(PRESET_GEOMETRY.balanced.details).toBe(0)
+  })
+
+  it('writes preferences, so a window too small still concedes normally', () => {
+    const g = PRESET_GEOMETRY.everything
+    const cols = computeDesktopColumns(900, g.sidebar, g.conversation, g.details)
+    // The arrangement asked for more than the window has; the concession chain
+    // answers exactly as it would for the same widths reached by dragging.
+    expect(cols.details).toBe(0)
+    expect(cols.conversation).toBe(CONVERSATION_MIN)
   })
 })
