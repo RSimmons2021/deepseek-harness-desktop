@@ -27,6 +27,10 @@ English | [中文](README.zh.md)
 
 The session header keeps the current session title as the lineage breadcrumb and, when the session has subagent descendants, appends a `/` count trigger before the header's action row; the trigger opens the descendant catalog, counts the complete subagent-only lineage, stops at ordinary forks, and shows ongoing activity when any counted descendant is running. Select any depth to open that child's conversation with its exact `{parentSessionId, childSessionId, mode}` address.
 
+### Watching a fan-out
+
+Delegating is the one thing that happens without the reader doing anything, so the lineage shows it rather than only recording it. While any counted descendant is running, the header trigger sends a ring outward from its activity dot on the same cadence the branches draw on, in the same colour the ongoing dot carries — one hue means running wherever it appears. In the tree, each branch draws itself in staggered by its position, so a fan-out of six reads as six things starting rather than one block appearing; the stagger caps at the sixth, past which the last arrival would be a wait rather than an effect. A running subtree's connector rail brightens and carries a travelling highlight down it, because the rail is the only thing joining a parent to what it started. Under `prefers-reduced-motion` the facts stay — a running rail keeps its colour and every branch is present — and only the movement that carried them goes.
+
 ### Browsing the tree
 
 Rows display mode plus `running`/`inactive` activity and an optional log-backed title; the trailing column stacks total durable provider usage above active-turn duration. Keyboard navigation works with ArrowRight/ArrowLeft to expand and collapse branches and ArrowUp/ArrowDown, Home, End, and Escape to navigate or close the tree. An unlabeled one-shot row falls back to its session id; corrupt, unsupported, or unavailable rows remain readable but disabled.

@@ -324,3 +324,103 @@
 .refresh:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
+
+/*
+ * Delegation is the one thing that happens without the reader doing anything,
+ * and until now it happened silently: a static dot appeared in the header and
+ * a flat list grew behind a menu. What follows is the fan-out made visible —
+ * the header says work started, and the tree draws the branch it started on.
+ */
+
+/*
+ * The header, while descendants are running. The ring travels outward from the
+ * dot on the same cadence as the branch draw below, so the two read as one
+ * event seen from two places, and it carries the same colour the ongoing dot
+ * does — one hue means "running" wherever it appears. It runs only while something is actually running,
+ * which is what keeps it information rather than decoration.
+ */
+.activitySlot {
+  position: relative;
+}
+
+.activitySlot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--dsw-static-deepseek-450);
+  border-radius: 50%;
+  animation: dsh-subagent-spawn 1800ms ease-out infinite;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes dsh-subagent-spawn {
+  0% { opacity: 0.55; transform: translate(-50%, -50%) scale(1); }
+  70%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(3.4); }
+}
+
+/*
+ * Each branch draws itself in, staggered by its position, so a fan-out of six
+ * reads as six things starting rather than one block appearing. The stagger is
+ * capped: past the sixth the last arrival would be a wait rather than an
+ * effect, so everything after it lands together.
+ */
+.node {
+  animation: dsh-subagent-branch 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(min(var(--dsh-branch-index, 0), 5) * 45ms);
+}
+
+@keyframes dsh-subagent-branch {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/*
+ * A running subtree's rail carries the work down it. The rail is the only
+ * thing that connects a parent to what it started, so it is where "still
+ * going" belongs; a resting subtree keeps the plain border it always had.
+ */
+.children[data-running]::before,
+.children > .node[data-running]::before {
+  border-left-color: color-mix(in srgb, var(--dsw-static-deepseek-450) 55%, transparent);
+}
+
+.children[data-running]::after {
+  content: '';
+  position: absolute;
+  top: -26px;
+  left: -1px;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--dsw-static-deepseek-450) 70%, transparent),
+    transparent
+  );
+  animation: dsh-subagent-rail 1600ms ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes dsh-subagent-rail {
+  from { transform: translateY(0); }
+  to { transform: translateY(26px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The facts stay: a running rail keeps its colour and every branch is
+     present. Only the movement that carried them goes. */
+  .activitySlot::after,
+  .children[data-running]::after {
+    animation: none;
+    content: none;
+  }
+
+  .node {
+    animation: none;
+  }
+}

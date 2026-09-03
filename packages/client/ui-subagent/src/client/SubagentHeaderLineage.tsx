@@ -267,11 +267,14 @@ function CatalogRows({
           </button>
         </div>
       )}
-      {catalog.entries.map((entry) => {
+      {catalog.entries.map((entry, index) => {
+        // The stagger is positional, so a fan-out arrives as a sequence rather
+        // than as one block; the CSS caps how far the sequence runs.
+        const branchOrder = { '--dsh-branch-index': index } as CSSProperties
         if (entry.kind === 'diagnostic') {
           const reason = diagnosticReason(entry, t)
           return (
-            <div key={entry.id} className={css.node}>
+            <div key={entry.id} className={css.node} style={branchOrder}>
               <div
                 role="treeitem"
                 aria-disabled="true"
@@ -348,7 +351,14 @@ function CatalogRows({
         }
 
         return (
-          <div key={entry.id} className={css.node}>
+          <div
+            key={entry.id}
+            className={css.node}
+            style={branchOrder}
+            // The rail into this branch carries the work while it runs, which
+            // is the only line connecting a parent to what it started.
+            data-running={entry.activity === 'running' || undefined}
+          >
             <div
               role="treeitem"
               tabIndex={0}
@@ -399,6 +409,7 @@ function CatalogRows({
                 role="group"
                 className={css.children}
                 aria-busy={childLoading || undefined}
+                data-running={entry.activity === 'running' || undefined}
               >
                 {childCatalog === undefined
                   ? (
