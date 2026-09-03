@@ -126,7 +126,23 @@ export function RootStandardProvider({ children }: { children: ReactNode }) {
   return <RootBindingContext.Provider value={binding}>{children}</RootBindingContext.Provider>
 }
 
-/** Subscribe to the scope roster before resolving and binding its current adapter. */
+/*
+ * Scopes this host has installed at least once. A scope adapter belongs to the
+ * plugin that installed it, so it can go away while the tree is still mounted:
+ * reloading a patch layer disposes ui-session, and the root provider re-renders
+ * in the gap before the replacement installs. Throwing there would take the
+ * whole application down — renderRoot wraps the root outlet in this provider,
+ * and SlotErrorBoundary rethrows assembly errors by design — for a state the
+ * composition closes by itself. A scope this host has never installed is a
+ * miswired shell instead, and still fails loud; RootOutlet draws the same line
+ * between a registration that went away and one that never arrived.
+ */
+const installedScopes = new WeakMap<SlotRendererHost, Set<string>>()
+
+/**
+ * Subscribe to the scope roster before resolving and binding its current
+ * adapter. Renders nothing while an installed adapter is between owners.
+ */
 export function ScopeProvider({
   scope,
   children,
@@ -137,7 +153,20 @@ export function ScopeProvider({
   const host = useHost()
   observableHook(host.scopeRevision)(value => value)
   const adapter = host.scope(scope)
-  if (adapter === undefined) throw new SlotAssemblyError(`scope '${scope}' rendered without an installed adapter`)
+  if (adapter === undefined) {
+    // Absence keeps the Hook order identical to the installed path below.
+    observableHook(absentSource)(value => value)
+    if (installedScopes.get(host)?.has(scope) !== true) {
+      throw new SlotAssemblyError(`scope '${scope}' rendered without an installed adapter`)
+    }
+    return null
+  }
   const binding = observableHook(adapter.current)(value => value)
+  let installed = installedScopes.get(host)
+  if (installed === undefined) {
+    installed = new Set<string>()
+    installedScopes.set(host, installed)
+  }
+  installed.add(scope)
   return <ScopeBindingContext.Provider value={binding}>{children}</ScopeBindingContext.Provider>
 }

@@ -120,7 +120,7 @@ function makeHost() {
       : <>{children}</>,
   }
   const scopeRevision = observable(0)
-  let activeScopeAdapter = sessionAdapter
+  let activeScopeAdapter: SlotScopeAdapter | undefined = sessionAdapter
 
   const bump = (key: string) => {
     versions.set(key, (versions.get(key) ?? 0) + 1)
@@ -185,6 +185,7 @@ function makeHost() {
     host,
     list,
     workspaces,
+    sessionAdapter,
     // Driver surface: set(id) publishes the resolved binding (or the absent
     // projection) through the scope adapter.
     current: {
@@ -232,7 +233,7 @@ function makeHost() {
       if (source === undefined) throw new Error(`unknown test session: ${id}`)
       source.set(snapshot)
     },
-    replaceScope: (adapter: SlotScopeAdapter) => {
+    replaceScope: (adapter: SlotScopeAdapter | undefined) => {
       activeScopeAdapter = adapter
       scopeRevision.set(scopeRevision.getSnapshot() + 1)
     },
@@ -1146,5 +1147,33 @@ describe('session-maybe adoption identity', () => {
       })
     })
     expect(view.container.textContent).toBe('replacement#1')
+  })
+})
+
+describe('scope adapter lifetime', () => {
+  it('renders nothing while an installed adapter is between owners', () => {
+    const h = makeHost()
+    h.addSession('s1')
+    h.current.set('s1')
+    const { view } = mountRoot(h, {}, () => <div data-testid="body">body</div>)
+    expect(view.queryByTestId('body')).not.toBeNull()
+
+    // A patch reload disposes the plugin that installed the scope. The gap must
+    // not take the application down: renderRoot wraps the whole tree here.
+    expect(() => { act(() => { h.replaceScope(undefined) }) }).not.toThrow()
+    expect(view.queryByTestId('body')).toBeNull()
+
+    // The replacement installs and the tree comes back.
+    act(() => { h.replaceScope(h.sessionAdapter) })
+    expect(view.queryByTestId('body')).not.toBeNull()
+  })
+
+  it('fails loud when the composition never installed the scope', () => {
+    const h = makeHost()
+    h.replaceScope(undefined)
+    // A shell whose composition has no session plugin at all is miswired, and
+    // that is worth the crash: nothing is coming to close the gap.
+    expect(() => mountRoot(h, {}, () => <div />))
+      .toThrow(/scope 'session-maybe' rendered without an installed adapter/)
   })
 })
