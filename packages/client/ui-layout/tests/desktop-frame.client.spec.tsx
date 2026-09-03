@@ -180,8 +180,10 @@ describe('DesktopFrame', () => {
     const { frame } = mountFrame()
     // Nothing has happened yet, so the workspace could only show an inert
     // roster; the conversation carries the picker and the composer instead.
-    expect(tracks(frame).conversation).toBe(0)
-    expect(tracks(frame).workspace).toBe(frameWidth - SIDEBAR_DEFAULT)
+    // Closing the conversation here would strand the reader: the composer that
+    // ends the blank state is inside it.
+    expect(tracks(frame).workspace).toBe(0)
+    expect(tracks(frame).conversation).toBe(frameWidth - SIDEBAR_DEFAULT)
     expect(frame.querySelector('[data-side="workspace"]')).toBeNull()
   })
 

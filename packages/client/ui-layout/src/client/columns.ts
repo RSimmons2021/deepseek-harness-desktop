@@ -107,10 +107,15 @@ export interface DesktopColumns { sidebar: number; workspace: number; conversati
  * then details closes outright, and only then does the workspace go under its
  * floor. Preferences are never rewritten, so nothing the user dragged is lost
  * to a window that was briefly too small.
+ * A closed workspace inverts which track is flexible: the conversation becomes
+ * the one that absorbs the window, against the three-column chain and its
+ * CENTER_MIN floor, because a conversation holding the whole window is a centre
+ * column rather than a companion panel.
  * @param viewport - available frame width in px.
  * @param sidebar - sidebar width preference in px (0 = the collapsed rail).
- * @param conversation - conversation width preference in px (0 = closed).
+ * @param conversation - conversation width preference in px (0 = closed); ignored while the workspace is closed.
  * @param details - details width preference in px (0 = closed).
+ * @param workspace - whether the workspace track takes any room at all.
  * @returns resolved widths; a zero track is visually closed, never unmounted.
  */
 export function computeDesktopColumns(
@@ -118,7 +123,13 @@ export function computeDesktopColumns(
   sidebar: number,
   conversation: number,
   details: number,
+  workspace: 'open' | 'closed',
 ): DesktopColumns {
+  if (workspace === 'closed') {
+    const solved = computeColumns(viewport, sidebar, details)
+    return { sidebar: solved.sidebar, workspace: 0, conversation: solved.center, details: solved.details }
+  }
+
   const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
   const c0 = conversation === 0 ? 0 : clampWidth(conversation, CONVERSATION_MIN, CONVERSATION_MAX)
   const d0 = details === 0 ? 0 : clampWidth(details, DETAILS_MIN, DETAILS_MAX)

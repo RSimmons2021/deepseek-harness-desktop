@@ -99,7 +99,7 @@ describe('computeColumns — degenerate viewports', () => {
 
 describe('computeDesktopColumns', () => {
   it('gives the workspace whatever the window has left once every preference fits', () => {
-    const cols = computeDesktopColumns(1920, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
+    const cols = computeDesktopColumns(1920, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT), 'open')
     expect(cols).toEqual({
       sidebar: SIDEBAR_DEFAULT,
       workspace: 1920 - SIDEBAR_DEFAULT - CONVERSATION_DEFAULT - DETAILS_DEFAULT,
@@ -108,13 +108,13 @@ describe('computeDesktopColumns', () => {
     })
     // The workspace is the one track that grows with the window, so a wider
     // window is a wider hero and nobody has to drag anything.
-    const wider = computeDesktopColumns(2400, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
+    const wider = computeDesktopColumns(2400, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT), 'open')
     expect(wider.workspace - cols.workspace).toBe(480)
     expect(wider.conversation).toBe(cols.conversation)
   })
 
   it('a closed sidebar keeps its rail and closed tracks contribute nothing', () => {
-    const cols = computeDesktopColumns(1600, closed(SIDEBAR_DEFAULT), closed(CONVERSATION_DEFAULT), closed(DETAILS_DEFAULT))
+    const cols = computeDesktopColumns(1600, closed(SIDEBAR_DEFAULT), closed(CONVERSATION_DEFAULT), closed(DETAILS_DEFAULT), 'open')
     expect(cols).toEqual({ sidebar: SIDEBAR_COLLAPSED, workspace: 1600 - SIDEBAR_COLLAPSED, conversation: 0, details: 0 })
   })
 
@@ -124,6 +124,7 @@ describe('computeDesktopColumns', () => {
     const squeezed = computeDesktopColumns(
       SIDEBAR_DEFAULT + WORKSPACE_MIN + CONVERSATION_DEFAULT + DETAILS_MIN + 40,
       open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT),
+      'open',
     )
     expect(squeezed.workspace).toBe(WORKSPACE_MIN)
     expect(squeezed.conversation).toBe(CONVERSATION_DEFAULT)
@@ -133,6 +134,7 @@ describe('computeDesktopColumns', () => {
     const tighter = computeDesktopColumns(
       SIDEBAR_DEFAULT + WORKSPACE_MIN + CONVERSATION_MIN + DETAILS_MIN + 30,
       open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT),
+      'open',
     )
     expect(tighter.workspace).toBe(WORKSPACE_MIN)
     expect(tighter.details).toBe(DETAILS_MIN)
@@ -140,7 +142,7 @@ describe('computeDesktopColumns', () => {
 
     // Re-widening restores both, because the solve reads the preferences and
     // never wrote to them.
-    const restored = computeDesktopColumns(1920, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
+    const restored = computeDesktopColumns(1920, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT), 'open')
     expect(restored.conversation).toBe(CONVERSATION_DEFAULT)
     expect(restored.details).toBe(DETAILS_DEFAULT)
   })
@@ -149,6 +151,7 @@ describe('computeDesktopColumns', () => {
     const closedDetails = computeDesktopColumns(
       SIDEBAR_DEFAULT + WORKSPACE_MIN + CONVERSATION_MIN,
       open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT),
+      'open',
     )
     expect(closedDetails).toEqual({
       sidebar: SIDEBAR_DEFAULT, workspace: WORKSPACE_MIN, conversation: CONVERSATION_MIN, details: 0,
@@ -156,7 +159,7 @@ describe('computeDesktopColumns', () => {
 
     // Below every floor combined the workspace absorbs the deficit: something
     // has to, and it is the track with the most room to give.
-    const last = computeDesktopColumns(900, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
+    const last = computeDesktopColumns(900, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT), 'open')
     expect(last.conversation).toBe(CONVERSATION_MIN)
     expect(last.details).toBe(0)
     expect(last.workspace).toBe(900 - SIDEBAR_DEFAULT - CONVERSATION_MIN)
@@ -164,8 +167,31 @@ describe('computeDesktopColumns', () => {
   })
 
   it('never resolves a negative track', () => {
-    const cols = computeDesktopColumns(200, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT))
+    const cols = computeDesktopColumns(200, open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT), 'open')
     expect(cols.workspace).toBe(0)
+  })
+
+  it('a closed workspace makes the conversation the flexible track', () => {
+    const cols = computeDesktopColumns(
+      1920,
+      open(SIDEBAR_DEFAULT), open(CONVERSATION_DEFAULT), open(DETAILS_DEFAULT),
+      'closed',
+    )
+    expect(cols).toEqual({
+      sidebar: SIDEBAR_DEFAULT,
+      workspace: 0,
+      conversation: 1920 - SIDEBAR_DEFAULT - DETAILS_DEFAULT,
+      details: DETAILS_DEFAULT,
+    })
+
+    // The width preference is not consulted while the conversation holds the
+    // window, so re-opening the workspace restores what the user dragged.
+    const narrower = computeDesktopColumns(
+      1920,
+      open(SIDEBAR_DEFAULT), open(CONVERSATION_MIN), open(DETAILS_DEFAULT),
+      'closed',
+    )
+    expect(narrower.conversation).toBe(cols.conversation)
   })
 })
 
@@ -179,7 +205,7 @@ describe('PRESET_GEOMETRY', () => {
   it('hands the window to the column each arrangement is named for', () => {
     const room = (id: (typeof LAYOUT_PRESETS)[number]): number => {
       const g = PRESET_GEOMETRY[id]
-      return computeDesktopColumns(1920, g.sidebar, g.conversation, g.details).workspace
+      return computeDesktopColumns(1920, g.sidebar, g.conversation, g.details, 'open').workspace
     }
     // Workspace first leaves the most room for the hero and Conversation first
     // the least, which is the whole of what the names promise.
@@ -192,7 +218,7 @@ describe('PRESET_GEOMETRY', () => {
 
   it('writes preferences, so a window too small still concedes normally', () => {
     const g = PRESET_GEOMETRY.everything
-    const cols = computeDesktopColumns(900, g.sidebar, g.conversation, g.details)
+    const cols = computeDesktopColumns(900, g.sidebar, g.conversation, g.details, 'open')
     // The arrangement asked for more than the window has; the concession chain
     // answers exactly as it would for the same widths reached by dragging.
     expect(cols.details).toBe(0)

@@ -58,8 +58,9 @@ export function DesktopFrame({ useStore, useSessions, actions, renderSlot, Sessi
   const cols = computeDesktopColumns(
     viewport,
     sidebarCollapsed ? 0 : panels.sidebar,
-    sessionBlank ? 0 : panels.conversation,
+    panels.conversation,
     panels.details,
+    sessionBlank ? 'closed' : 'open',
   )
   const colsRef = useRef(cols)
   colsRef.current = cols
