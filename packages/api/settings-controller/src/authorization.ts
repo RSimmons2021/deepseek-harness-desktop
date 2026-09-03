@@ -19,7 +19,7 @@ import type {
   AuthorizationNotice,
   AuthorizationPrompt,
 } from '@deepseek-ai/dsh-authorization/types'
-import { Remote, TypertRemoteFailure, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { z } from 'zod'
 import type {
   AuthorizationFlowView,
@@ -36,11 +36,7 @@ const answerSchema = z.object({ key: keySchema, value: z.string().max(4096) })
 function parseRequest<T>(method: string, schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value)
   if (!parsed.success) {
-    throw new TypertRemoteFailure({
-      code: 'bad-request',
-      message: `invalid payload for ${method}`,
-      details: { issues: parsed.error.issues },
-    })
+    throw new RemoteError('gateway/bad-request', `invalid payload for ${method}`, { issues: parsed.error.issues })
   }
   return parsed.data
 }
@@ -115,11 +111,7 @@ export class AuthorizationController extends TypertRemoteService {
   private seam(): NonNullable<Context['authorization']> {
     const authorization = this.ctx.get('authorization')
     if (authorization === undefined) {
-      throw new TypertRemoteFailure({
-        code: 'unavailable',
-        message: 'no authorization provider is mounted; sign-in flows cannot run',
-        details: {},
-      })
+      throw new RemoteError('gateway/internal', 'no authorization provider is mounted; sign-in flows cannot run', {})
     }
     return authorization
   }
@@ -219,11 +211,7 @@ export class AuthorizationController extends TypertRemoteService {
     const request = parseRequest('authorization.answer', answerSchema, { key, value })
     const attempt = this.attempts.get(request.key)
     if (attempt?.answer === undefined) {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: 'no question is awaiting an answer for this credential',
-        details: {},
-      })
+      throw new RemoteError('gateway/bad-request', 'no question is awaiting an answer for this credential', {})
     }
     attempt.answer(request.value)
     return this.view(request.key)

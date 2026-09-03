@@ -108,3 +108,5 @@ Workspace 打开期间会通过 Gateway 跟随一个 `agentTeams/follow` stream 
 无。
 
 </details>
+
+**运行时不变式：** 不发布伴生入口。RPC 是权威来源，本包只持有一个可释放的 slot 注册。

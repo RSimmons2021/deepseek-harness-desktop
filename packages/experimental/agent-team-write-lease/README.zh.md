@@ -50,7 +50,8 @@ kind: "package-reference"
 | 文件 | 作用 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 两处 prepend 的文件系统决策 |
-| [`src/invariant.ts`](src/invariant.ts) | 附带说明的空 invariant 伴生插件 |
+
+**运行时不变量：** 不发布伴生插件。本包不拥有任何持久记录，也不拥有自己的可变关系：它只贡献两个监听器，向 `TeamService.writeRefusal` 索取决定，而该决定所读取的任务板由 Team domain 拥有。
 
 </details>
 

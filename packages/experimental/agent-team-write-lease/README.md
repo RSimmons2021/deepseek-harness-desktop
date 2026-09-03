@@ -50,7 +50,8 @@ The decision itself belongs to `TeamService.writeRefusal`, which owns the task b
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | The two prepended filesystem decisions |
-| [`src/invariant.ts`](src/invariant.ts) | Explained empty invariant companion |
+
+**Runtime invariant:** No companion is published. This package owns no durable record and no mutable relationship of its own: it contributes two listeners that ask `TeamService.writeRefusal` for a decision, and the Team domain owns the task board that decision reads.
 
 </details>
 

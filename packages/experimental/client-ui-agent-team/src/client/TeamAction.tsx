@@ -21,7 +21,7 @@ import type {
   TeamTaskView as TeamTask,
   TeamView,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
-import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   IconCheckOutline14, IconCloseOutline16, IconEditOutline16, IconPlusOutline16,
   IconDarkOutline16, IconLightOutline16, IconPauseOutline16, IconPlayOutline16,
@@ -244,10 +244,9 @@ function laneOf(task: TeamTask): (typeof LANE_ORDER)[number] {
 /** Peer-message form state. The target comes from the card the form opened on. */
 interface MessageDraft {
   message: string
-  delivery: 'quiet' | 'wakeup'
 }
 
-const EMPTY_MESSAGE: MessageDraft = { message: '', delivery: 'quiet' }
+const EMPTY_MESSAGE: MessageDraft = { message: '' }
 
 function items(value: string): string[] {
   return [...new Set(value.split(',').map(item => item.trim()).filter(Boolean))]
@@ -257,7 +256,11 @@ function taskIds(value: string): TeamTaskId[] {
   return items(value) as TeamTaskId[]
 }
 
-function failureText(error: Pick<RemoteFailure, 'code' | 'message'>): string {
+/**
+ * One failure line for either carrier: a Remote failure, or a Team business
+ * rejection whose codes stay local to this seam and never ride the wire.
+ */
+function failureText(error: { readonly code: string; readonly message: string }): string {
   return `${error.message} (${error.code})`
 }
 
@@ -635,7 +638,6 @@ export function TeamAction({
       const result = await sendMessage(requestedSession, {
         target: targetName,
         message: messageDraft.message.trim(),
-        delivery: messageDraft.delivery,
       })
       if (sessionRef.current !== requestedSession) return
       if (!result.ok) {
@@ -1502,16 +1504,6 @@ function MessageForm({ draft, setDraft, pending, onSend, onCancel, t }: MessageF
         placeholder={t('messageText')}
         onChange={(event: ChangeEvent<HTMLTextAreaElement>) => { setDraft({ ...draft, message: event.target.value }) }}
       />
-      <select
-        value={draft.delivery}
-        aria-label={t('messageText')}
-        onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-          setDraft({ ...draft, delivery: event.target.value === 'wakeup' ? 'wakeup' : 'quiet' })
-        }}
-      >
-        <option value="quiet">{t('messageQuiet')}</option>
-        <option value="wakeup">{t('messageWakeup')}</option>
-      </select>
       <div className={css.formActions}>
         <button type="button" disabled={pending || draft.message.trim() === ''} onClick={onSend}>
           {t(pending ? 'sending' : 'send')}

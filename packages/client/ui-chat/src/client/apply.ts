@@ -35,16 +35,12 @@ import {
   CHAT_SETTINGS_NAMESPACE, DEFAULT_REASONING_VIEW_MODE, DEFAULT_TRANSCRIPT_VIEW_MODE,
   REASONING_VIEW_FIELD, TRANSCRIPT_VIEW_FIELD, type ChatSettings,
 } from '../chat-settings.ts'
+import { useTurnDataValue } from './chat/use-turn-data.ts'
 
 const CHAT_NODE_INJECT: ChatNodeTurnDataInjected = {
   hooks: {
-    turnData: ({ useChat }, nodeKey) => function useTurnData(key) {
-      return useChat((snapshot) => {
-        const location = snapshot.nodes.get(nodeKey)?.location
-        return location?.kind === 'turn' || location?.kind === 'step'
-          ? location.turn.data.get(key)
-          : undefined
-      })
+    turnData: (_standard, data) => function useTurnData(key) {
+      return useTurnDataValue(data, key)
     },
   },
 }
@@ -123,10 +119,16 @@ export function apply(ctx: Context): void {
       },
       store: chatStore,
       inject: (sessionId: SessionId, actions: BoundActions<typeof chatStore>): ChatViewInjected => {
-        const session = ctx.sessions.binding(sessionId)?.session
-        if (session === undefined) throw new Error(`ui-chat: unknown session "${sessionId}"`)
+        const binding = ctx.sessions.binding(sessionId)
+        if (binding === undefined) throw new Error(`ui-chat: unknown session "${sessionId}"`)
+        const session = binding.session
+        const chat = chatSource(binding)
         return {
           hooks: { transcriptView: transcriptView.mode, reasoningView: reasoningView.mode },
+          keyedHooks: {
+            chatNode: key => chat.getSnapshot().nodes.source(key),
+            chatNodeProcess: key => chat.getSnapshot().nodes.processSource(key),
+          },
           openDetails: (target) => {
             actions.select(target)
             ctx.layout.openDetails()
@@ -140,6 +142,7 @@ export function apply(ctx: Context): void {
             if (!result.ok) throw new Error(`path open failed: ${result.error.message}`)
           },
           loadOlder: () => { void session.loadOlder() },
+          loadThrough: seq => session.loadThrough(seq),
           loadImage: Object.assign(
             (attachment: ImageAttachmentRef) => ctx.uiConversation.imageUrl(sessionId, attachment),
             { peek: (attachment: ImageAttachmentRef) => ctx.uiConversation.peekImageUrl(sessionId, attachment) },

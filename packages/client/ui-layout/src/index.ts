@@ -1,7 +1,7 @@
 /** Host registration for the browser layout preference. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import { LAYOUT_SETTINGS_NAMESPACE, LayoutSettingsSchema } from './layout-settings.ts'
 
 export {
@@ -13,7 +13,7 @@ export {
 export function apply(ctx: Context): void {
   ctx.inject(['settings'], (settingsCtx) => {
     settingsCtx.settings.register(
-      settingsNamespace(LAYOUT_SETTINGS_NAMESPACE),
+      LAYOUT_SETTINGS_NAMESPACE,
       LayoutSettingsSchema,
     )
   })

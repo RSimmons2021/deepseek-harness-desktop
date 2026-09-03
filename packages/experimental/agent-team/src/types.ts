@@ -105,10 +105,10 @@ export interface TeamMemberView {
   /**
    * Durable messages addressed to this member that it has not recorded yet.
    *
-   * A quiet message does not start an idle member, so one sent to a member
-   * between turns sits in its mailbox until something else wakes it. Counting
-   * it here is what makes that visible: `sendMessage` already answers `queued`
-   * rather than `accepted`, but nothing showed the backlog afterwards.
+   * A message whose target could not take it stays in the mailbox until the
+   * member is next available. Counting it here is what makes that visible:
+   * `sendMessage` already answers `queued` rather than `accepted`, but nothing
+   * showed the backlog afterwards.
    */
   readonly pendingMessages: number
   readonly diagnostics: string[]
@@ -161,7 +161,6 @@ export interface TeamMessageSnapshot {
   readonly senderId: SessionId
   readonly senderName: string
   readonly targetId: SessionId
-  readonly delivery: 'quiet' | 'wakeup'
   readonly content: ContentBlock[]
 }
 
@@ -288,7 +287,6 @@ export interface SpawnTeammateResult {
 export interface SendTeamMessageRequest {
   readonly target: string
   readonly content: ContentBlock[]
-  readonly delivery: 'quiet' | 'wakeup'
   readonly signal: AbortSignal
 }
 
@@ -383,7 +381,6 @@ export type TeamSpawnMutationResult =
 export interface RemoteSendTeamMessageRequest {
   readonly target: string
   readonly message: string
-  readonly delivery: 'quiet' | 'wakeup'
 }
 
 /** Outcome of one Remote peer message, preserving Team rejections as business values. */
@@ -484,14 +481,14 @@ export interface TeamWaitResult {
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     /** Whole teammate lifecycle value, stored only in the Team Lead Session. */
-    'team/member': { version: 1; teamId: TeamId; member: TeamMemberSnapshot }
+    'team/member': { version: 2; teamId: TeamId; member: TeamMemberSnapshot }
     /** Whole shared-task value, stored only in the Team Lead Session. */
-    'team/task': { version: 1; teamId: TeamId; task: TeamTaskSnapshot }
+    'team/task': { version: 2; teamId: TeamId; task: TeamTaskSnapshot }
     /** Durable mailbox enqueue, stored before delivery is attempted. */
-    'team/message/queued': { version: 1; teamId: TeamId; message: TeamMessageSnapshot }
+    'team/message/queued': { version: 2; teamId: TeamId; message: TeamMessageSnapshot }
     /** Durable acknowledgement that the target Session recorded the message. */
     'team/message/delivered': {
-      version: 1
+      version: 2
       teamId: TeamId
       messageId: TeamMessageId
       targetId: SessionId

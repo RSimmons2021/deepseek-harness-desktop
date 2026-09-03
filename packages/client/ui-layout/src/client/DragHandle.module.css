@@ -29,7 +29,7 @@
   width: 12px;
   height: 32px;
   box-sizing: border-box;
-  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border: 0.5px solid var(--dsw-alias-border-l2-darkmode-thin);
   border-radius: 10px;
   background: var(--dsw-alias-button-floating-fill);
   content: '';

@@ -12,6 +12,7 @@ import { TeamJournal } from './journal.ts'
 import { tailLineOf } from './tail.ts'
 import { TeamRuntimeLifecycle } from './lifecycle.ts'
 import { TeamMailbox } from './mailbox.ts'
+import { teamProjectionDefinition } from './projection.ts'
 import { DEFAULT_TEAM_ROLES, resolveRoles, resolveSpawn } from './roles.ts'
 import { TeamRoster } from './roster.ts'
 import type { TeamMembership } from './roster.ts'
@@ -46,8 +47,8 @@ export type * from './types.ts'
 export type { TeamMembership } from './roster.ts'
 export { TeamId, TeamMessageId, TeamTaskId } from './types.ts'
 export { TeamError } from './error.ts'
-import { activityOf } from './fold.ts'
-export { activityOf, foldTeam } from './fold.ts'
+import { activityOf } from './projection.ts'
+export { activityOf } from './projection.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -88,7 +89,7 @@ function positiveLimit(name: string, value: number): number {
 
 /** Agent Teams service backed by the exact live Lead Session log. */
 export class TeamService extends TypertRemoteService {
-  static inject = ['agents', 'sessions', 'sessionPersistence', 'subagents']
+  static inject = ['agents', 'sessions', 'sessionPersistence', 'sessionProjections', 'subagents']
 
   static Config = z.object({
     maxMembers: z.number().step(1).min(1).default(DEFAULT_MAX_MEMBERS),
@@ -166,7 +167,16 @@ export class TeamService extends TypertRemoteService {
       const membership = this.roster.tryMembership(agent)
       if (membership !== undefined) this.activity.notify(membership.id)
     })
-    ctx.effect(() => () => this.disposeRuntime(), 'agentTeams.runtimeLifecycle()')
+    ctx.effect(() => {
+      const disposeProjection = ctx.root.sessionProjections.register(teamProjectionDefinition)
+      return async () => {
+        try {
+          await this.disposeRuntime()
+        } finally {
+          disposeProjection()
+        }
+      }
+    }, 'agentTeams.runtimeLifecycle()')
     for (const agent of ctx.agents.list()) this.scheduleRecovery(agent)
   }
 
@@ -214,7 +224,7 @@ export class TeamService extends TypertRemoteService {
   /**
    * Queue one durable peer message, then attempt immediate delivery.
    * @param caller - exact live sending Team member.
-   * @param request - target name, content, scheduling mode, and pre-queue cancellation.
+   * @param request - target name, content, and pre-queue cancellation.
    * @returns durable message identity and immediate-delivery observation.
    */
   async sendMessage(caller: Agent, request: SendTeamMessageRequest): Promise<SendTeamMessageResult> {
@@ -341,7 +351,7 @@ export class TeamService extends TypertRemoteService {
     // already in memory, and one shape for both reads is worth more than an
     // early exit that would have to index into it.
     const lines: TeamTailLine[] = []
-    for (const event of target.session.events) {
+    for (const event of target.session.snapshotEvents()) {
       const line = tailLineOf(event, MAX_TAIL_LINE_LENGTH)
       if (line !== undefined) lines.push(line)
     }
@@ -433,7 +443,7 @@ export class TeamService extends TypertRemoteService {
    */
   private takenMemberNames(agent: Agent): ReadonlySet<string> {
     const { root } = this.roster.membership(agent)
-    return new Set(this.journal.state(root).memberIdsByName.keys())
+    return new Set(this.journal.state(root).members.map(member => member.name))
   }
 
   @Remote('spawnTeammate')
@@ -473,7 +483,6 @@ export class TeamService extends TypertRemoteService {
         value: await this.sendMessage(agent, {
           target: request.target,
           content: [{ type: 'text', text: request.message }],
-          delivery: request.delivery,
           signal: new AbortController().signal,
         }),
       }
@@ -572,7 +581,7 @@ export class TeamService extends TypertRemoteService {
     const membership = this.roster.membership(agent)
     const state = this.journal.state(membership.root)
     const entries: TeamActivityEntry[] = []
-    for (const event of membership.root.session.events) {
+    for (const event of membership.root.session.snapshotEvents()) {
       const entry = activityOf(event, state)
       if (entry !== undefined) entries.push(entry)
     }

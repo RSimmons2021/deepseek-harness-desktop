@@ -4,10 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
+  RemoteSendTeamMessageRequest,
   RemoteSpawnTeammateRequest,
   TeamActivityEntry, TeamRole, TeamTailLine, TeamTaskId, TeamTaskView as TeamTask, TeamView,
 } from '@deepseek-ai/dsh-experimental-agent-team/client'
-import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { bindSnapshotSelector, makeTranslate, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import {
   TeamAction, type TeamActionInjected, type TeamActionProps, type TeamActionResult,
@@ -121,8 +122,8 @@ function taskRejected(message: string): TeamTaskActionResult {
   }
 }
 
-function remoteFailure(message: string): { ok: false; error: { code: 'internal'; message: string; details: {} } } {
-  return { ok: false, error: { code: 'internal', message, details: {} } }
+function remoteFailure(message: string): TeamActionResult<never> {
+  return { ok: false, error: new RemoteError('gateway/internal', message, {}) }
 }
 
 function props(actions: TeamActionInjected, sessionId: SessionId = SESSION): TeamActionProps {
@@ -343,7 +344,6 @@ describe('TeamAction', () => {
       expect(sendMessage).toHaveBeenCalledWith(SESSION, {
         target: 'worker',
         message: 'rebase onto main',
-        delivery: 'quiet',
       })
     })
     // The composer gives the card back once the message is durable.
@@ -832,7 +832,7 @@ describe('TeamAction', () => {
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
     await screen.findByText('Implement runtime')
     fireEvent.click(screen.getByRole('button', { name: /完成/u }))
-    expect(await screen.findByText('task reload failed (internal)')).toBeTruthy()
+    expect(await screen.findByText('task reload failed (gateway/internal)')).toBeTruthy()
     expect(screen.queryByText(zh.conflict)).toBeNull()
     first.unmount()
 
@@ -850,7 +850,7 @@ describe('TeamAction', () => {
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Edited' } })
     pickBlocker('Publish the notes')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
-    expect(await screen.findByText('dependency reload failed (internal)')).toBeTruthy()
+    expect(await screen.findByText('dependency reload failed (gateway/internal)')).toBeTruthy()
     expect(screen.queryByText(zh.conflict)).toBeNull()
   })
 
@@ -916,7 +916,7 @@ describe('TeamAction', () => {
     })
     const first = render(<TeamAction {...props(failedLoad)} />)
     fireEvent.click(screen.getByRole('button', { name: /Agent Team/u }))
-    expect(await screen.findByText('load failed (internal)')).toBeTruthy()
+    expect(await screen.findByText('load failed (gateway/internal)')).toBeTruthy()
     first.unmount()
 
     const createTask = vi.fn(() => Promise.resolve(remoteFailure('create failed')))
@@ -927,7 +927,7 @@ describe('TeamAction', () => {
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Task' } })
     fireEvent.change(screen.getByPlaceholderText('任务描述'), { target: { value: 'Description' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
-    expect(await screen.findByText('create failed (internal)')).toBeTruthy()
+    expect(await screen.findByText('create failed (gateway/internal)')).toBeTruthy()
     second.unmount()
 
     const pending = Promise.withResolvers<TeamTaskActionResult>()
@@ -1031,7 +1031,7 @@ describe('TeamAction', () => {
     expect(screen.queryByRole('button', { name: '保存' })).toBeNull()
     fireEvent.click(within(edited()).getByRole('button', { name: /编辑/u }))
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
-    expect(await screen.findByText('edit failed (internal)')).toBeTruthy()
+    expect(await screen.findByText('edit failed (gateway/internal)')).toBeTruthy()
 
     fireEvent.change(screen.getByPlaceholderText('任务标题'), { target: { value: 'Saved edit' } })
     pickBlocker('Publish the notes')
@@ -1068,7 +1068,7 @@ describe('TeamAction', () => {
     pickBlocker('Publish the notes')
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
-    expect(await screen.findByText('dependency transport failed (internal)')).toBeTruthy()
+    expect(await screen.findByText('dependency transport failed (gateway/internal)')).toBeTruthy()
   })
 
   it('skips the dependency mutation when an edit keeps the same blockers', async () => {
@@ -1370,7 +1370,7 @@ describe('TeamAction', () => {
     expect(screen.queryByText(/too late to matter/u)).toBeNull()
   })
 
-  it('reports every refused peer message and keeps a wakeup delivery', async () => {
+  it('reports every refused peer message', async () => {
     const send = vi.fn()
       .mockResolvedValueOnce(remoteFailure('message transport is down'))
       .mockResolvedValueOnce({
@@ -1382,10 +1382,9 @@ describe('TeamAction', () => {
     await screen.findByText('Implement runtime')
     fireEvent.click(screen.getByRole('button', { name: zh.message }))
     fireEvent.change(screen.getByPlaceholderText(zh.messageText), { target: { value: 'take task-1' } })
-    fireEvent.change(screen.getByLabelText(zh.messageText), { target: { value: 'wakeup' } })
     fireEvent.click(screen.getByRole('button', { name: zh.send }))
     expect((await screen.findByRole('alert')).textContent).toContain('message transport is down')
-    expect(send.mock.calls[0]?.[1]).toMatchObject({ target: 'worker', delivery: 'wakeup' })
+    expect(send.mock.calls[0]?.[1]).toMatchObject({ target: 'worker' })
 
     fireEvent.click(screen.getByRole('button', { name: zh.send }))
     await waitFor(() => {
@@ -1537,8 +1536,8 @@ describe('TeamAction', () => {
     expect(screen.queryByRole('group')).toBeNull()
   })
 
-  it('keeps quiet delivery as the draft it starts in', async () => {
-    const send = vi.fn((_session: SessionId, _request: { delivery: string }) => Promise.resolve({
+  it('sends a peer message as the target and the text, and nothing else', async () => {
+    const send = vi.fn((_session: SessionId, _request: RemoteSendTeamMessageRequest) => Promise.resolve({
       ok: true as const, value: { ok: true as const, value: { messageId: 'm' as never, status: 'accepted' as const } },
     }))
     render(<TeamAction {...props(actions({ sendMessage: send }))} />)
@@ -1547,11 +1546,10 @@ describe('TeamAction', () => {
 
     fireEvent.click(screen.getByRole('button', { name: zh.message }))
     fireEvent.change(screen.getByPlaceholderText(zh.messageText), { target: { value: 'take task-1' } })
-    fireEvent.change(screen.getByLabelText(zh.messageText), { target: { value: 'wakeup' } })
-    fireEvent.change(screen.getByLabelText(zh.messageText), { target: { value: 'quiet' } })
     fireEvent.click(screen.getByRole('button', { name: zh.send }))
     await waitFor(() => { expect(send).toHaveBeenCalledOnce() })
-    expect(send.mock.calls[0]?.[1]).toMatchObject({ delivery: 'quiet' })
+    // Peer messages steer, so there is no delivery mode left to choose.
+    expect(send.mock.calls[0]?.[1]).toEqual({ target: 'worker', message: 'take task-1' })
     expect(await screen.findByText(zh.messageQueued)).toBeTruthy()
   })
 
