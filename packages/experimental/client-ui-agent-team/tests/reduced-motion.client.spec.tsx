@@ -46,7 +46,7 @@ const view: TeamView = {
 }
 
 function props(current: SessionId | undefined): DesktopTeamRootProps {
-  const snapshot = { current, phase: 'ready' }
+  const snapshot = { current, phase: 'ready', subagentsByParent: {} }
   return {
     useSessions: bindSnapshotSelector({ getSnapshot: () => snapshot, subscribe: () => () => {} }),
     ensureSession: () => Promise.resolve(),
@@ -55,6 +55,8 @@ function props(current: SessionId | undefined): DesktopTeamRootProps {
       subscribe: () => () => {},
     }),
     toggleTheme: () => {},
+    observeSubagents: () => () => {},
+    openSubagent: () => {},
     load: () => Promise.resolve({ ok: true, value: view }),
     createTask: () => Promise.reject(new Error('not used')),
     updateTask: () => Promise.reject(new Error('not used')),

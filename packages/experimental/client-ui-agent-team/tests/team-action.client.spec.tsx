@@ -126,11 +126,26 @@ function remoteFailure(message: string): TeamActionResult<never> {
   return { ok: false, error: new RemoteError('gateway/internal', message, {}) }
 }
 
-function props(actions: TeamActionInjected, sessionId: SessionId = SESSION): TeamActionProps {
+/** Session-list snapshot the branch reads; tests override the lead's catalog. */
+export const sessionsSnapshot = (entries: readonly unknown[] = []) => ({
+  ids: [], byId: {}, current: SESSION, phase: 'ready' as const,
+  subagentsByParent: { [SESSION]: { entries, state: 'ready' as const, error: null } },
+  jobsBySession: {}, currentAddress: undefined,
+})
+
+function props(
+  actions: TeamActionInjected,
+  sessionId: SessionId = SESSION,
+  subagents: readonly unknown[] = [],
+): TeamActionProps {
   const { hooks, ...face } = actions
   return {
     sessionId,
     ...face,
+    useSessions: bindSnapshotSelector({
+      getSnapshot: () => sessionsSnapshot(subagents),
+      subscribe: () => () => {},
+    }),
     useColorScheme: bindSnapshotSelector(hooks.colorScheme),
     t: makeTranslate(zh, commonZh),
   } as unknown as TeamActionProps
@@ -175,6 +190,8 @@ function actions(overrides: Partial<TeamActionInjected> = {}): TeamActionInjecte
     activity: () => Promise.resolve({ ok: true, value: [] }),
     tail: () => Promise.resolve({ ok: true, value: [] }),
     openTeammate: () => Promise.resolve(),
+    observeSubagents: () => () => {},
+    openSubagent: () => {},
     hooks: {
       colorScheme: { getSnapshot: () => 'dark', subscribe: () => () => {} },
     },
@@ -1855,5 +1872,62 @@ describe('TeamAction', () => {
     fireEvent.focus(cards[1]!)
     expect(await screen.findByText(zh.pendingMail.replace('{count}', '2'))).toBeTruthy()
     expect(screen.getByText(zh.pendingMailHint)).toBeTruthy()
+  })
+})
+
+describe('subagent branch', () => {
+  const child = (id: string, activity: 'running' | 'inactive', label?: string) => ({
+    kind: 'child' as const,
+    id: id as SessionId,
+    activity,
+    hasChildren: false,
+    mode: 'one-shot' as const,
+    ...(label === undefined ? {} : { label }),
+  })
+
+  it('draws one node per task-spawned child and pulses the running ones', async () => {
+    render(<TeamAction standalone {...props(actions(), SESSION, [
+      child('c1', 'running', 'docs scan'),
+      child('c2', 'inactive', 'count files'),
+    ])} />)
+    const branch = await screen.findByLabelText(zh.subagentsRunning.replace('{count}', '1'))
+    expect(branch.dataset['teamSubagentBranch']).toBe('2')
+    const nodes = within(branch).getAllByRole('listitem')
+    expect(nodes.map(node => node.dataset['activity'])).toEqual(['running', 'inactive'])
+    expect(within(branch).getByText('docs scan')).not.toBeNull()
+  })
+
+  it('leaves a diagnostic row off the branch, because it names no agent', async () => {
+    render(<TeamAction standalone {...props(actions(), SESSION, [
+      child('c1', 'inactive', 'only real child'),
+      { kind: 'diagnostic' as const, id: 'c2' as SessionId, reason: 'corrupt' as const },
+    ])} />)
+    const branch = await screen.findByLabelText(zh.subagentsSettled.replace('{count}', '1'))
+    expect(within(branch).getAllByRole('listitem')).toHaveLength(1)
+  })
+
+  it('renders nothing while the lead has spawned no children', async () => {
+    render(<TeamAction standalone {...props(actions(), SESSION, [])} />)
+    await screen.findByText(zh.roster)
+    expect(document.querySelector('[data-team-subagent-branch]')).toBeNull()
+  })
+
+  it('observes the catalog so the branch keeps arriving, and releases it on unmount', async () => {
+    const release = vi.fn()
+    const observeSubagents = vi.fn(() => release)
+    const { unmount } = render(<TeamAction standalone {...props(actions({ observeSubagents }), SESSION, [])} />)
+    await screen.findByText(zh.roster)
+    expect(observeSubagents).toHaveBeenCalledWith(SESSION)
+    unmount()
+    expect(release).toHaveBeenCalled()
+  })
+
+  it('opens the child it was clicked on', async () => {
+    const openSubagent = vi.fn()
+    render(<TeamAction standalone {...props(actions({ openSubagent }), SESSION, [
+      child('c1', 'inactive', 'finished child'),
+    ])} />)
+    fireEvent.click(await screen.findByText('finished child'))
+    expect(openSubagent).toHaveBeenCalledWith(SESSION, 'c1', 'one-shot')
   })
 })

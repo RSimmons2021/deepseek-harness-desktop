@@ -25,6 +25,8 @@ const view: TeamView = {
 interface SessionSnapshot {
   current: SessionId | undefined
   phase: string
+  /** The lead's subagent catalogs; the roster's branch reads its own key. */
+  subagentsByParent: Record<string, unknown>
 }
 
 function props(overrides: {
@@ -34,6 +36,7 @@ function props(overrides: {
   const snapshot: SessionSnapshot = {
     current: undefined,
     phase: 'ready',
+    subagentsByParent: {},
     ...overrides.snapshot,
   }
   return {
@@ -47,6 +50,8 @@ function props(overrides: {
       subscribe: () => () => {},
     }),
     toggleTheme: () => {},
+    observeSubagents: () => () => {},
+    openSubagent: () => {},
     load: () => Promise.resolve({ ok: true, value: view }),
     createTask: () => Promise.reject(new Error('not used')),
     updateTask: () => Promise.reject(new Error('not used')),

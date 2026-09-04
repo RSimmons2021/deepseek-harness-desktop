@@ -125,6 +125,16 @@ function registerUi(ctx: ClientContext): void {
       stream.start()
       return () => { void stream.dispose() }
     },
+    observeSubagents(parentSessionId: SessionId): () => void {
+      // The catalog is pulled, not pushed: opening it is what schedules the
+      // refreshes that keep the hero's branch current while a turn spawns.
+      sessions.setSubagentCatalogOpen(parentSessionId, true)
+      void sessions.refreshSubagents(parentSessionId)
+      return () => { sessions.setSubagentCatalogOpen(parentSessionId, false) }
+    },
+    openSubagent(parentSessionId: SessionId, childSessionId: SessionId, mode: 'one-shot' | 'continuable'): void {
+      sessions.openSubagent({ parentSessionId, childSessionId, mode })
+    },
     async openTeammate(sessionId: SessionId, member: TeamRosterMember): Promise<void> {
       if (member.role !== 'teammate') return
       const parentSessionId = leadSessionId(sessionId)

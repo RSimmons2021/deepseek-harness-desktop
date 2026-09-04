@@ -33,6 +33,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { Loader } from './Loader.tsx'
+import { SubagentBranch, type SubagentEntry } from './SubagentBranch.tsx'
 import { TextShimmer } from './TextShimmer.tsx'
 import { NS, type TeamKey } from './locales.ts'
 import css from './TeamAction.module.css'
@@ -120,6 +121,13 @@ export interface TeamActionInjected {
     limit: number,
   ) => Promise<TeamActionResult<TeamTailLine[]>>
   openTeammate: (sessionId: SessionId, member: TeamRosterMember) => Promise<void>
+  /**
+   * Keep the lead's direct subagent catalog live while the workspace is on
+   * screen; the returned disposer stops the observation.
+   */
+  observeSubagents: (parentSessionId: SessionId) => () => void
+  /** Open one task-spawned child of the lead in the conversation column. */
+  openSubagent: (parentSessionId: SessionId, childSessionId: SessionId, mode: 'one-shot' | 'continuable') => void
 }
 
 /** Full props of the Team conversation-header action. */
@@ -131,6 +139,7 @@ export type TeamSurfaceProps = Pick<
   TeamActionProps,
   | 'sessionId' | 'load' | 'createTask' | 'updateTask' | 'spawnTeammate'
   | 'sendMessage' | 'interrupt' | 'follow' | 'roles' | 'activity' | 'tail' | 'openTeammate'
+  | 'observeSubagents' | 'openSubagent' | 'useSessions'
   | 'useColorScheme' | 'toggleTheme' | 't'
 > & {
   /** Keep the designed Team workspace mounted as the application surface. */
@@ -162,6 +171,9 @@ interface SpawnDraft {
 }
 
 const EMPTY_SPAWN: SpawnDraft = { roleId: '', name: '', prompt: '' }
+
+/** Identity-stable empty catalog: a fresh literal would re-render the roster every tick. */
+const NO_SUBAGENTS: readonly SubagentEntry[] = []
 
 /** Tiles the roster keeps on screen so a nearly empty Team still reads as a row. */
 const ROSTER_MIN_TILES = 4
@@ -372,7 +384,8 @@ function memberStatusKey(status: TeamRosterMember['status']): TeamKey {
 /** Render the live Team roster and compare-and-set task board. */
 export function TeamAction({
   sessionId, load, createTask, updateTask, spawnTeammate, sendMessage, interrupt, follow,
-  activity, roles, tail, openTeammate, useColorScheme, toggleTheme, t, standalone = false,
+  activity, roles, tail, openTeammate, observeSubagents, openSubagent, useSessions,
+  useColorScheme, toggleTheme, t, standalone = false,
 }: TeamSurfaceProps) {
   const colorScheme = useColorScheme(scheme => scheme)
   const [open, setOpen] = useState(standalone)
@@ -395,6 +408,14 @@ export function TeamAction({
   const [spawning, setSpawning] = useState(false)
   const [spawnDraft, setSpawnDraft] = useState<SpawnDraft>(EMPTY_SPAWN)
   const [teamRoles, setTeamRoles] = useState<readonly TeamRole[]>([])
+  // The lead's task-spawned children ride the same catalog the conversation
+  // header reads, so the hero and the header never disagree about the count.
+  const subagentEntries = useSessions(
+    state => state.subagentsByParent[sessionId]?.entries ?? NO_SUBAGENTS,
+  )
+  // Observation is what keeps the catalog arriving; without it the branch would
+  // only ever show what some other surface happened to fetch.
+  useEffect(() => observeSubagents(sessionId), [observeSubagents, sessionId])
   const [spawnPending, setSpawnPending] = useState(false)
   const [messaging, setMessaging] = useState<SessionId | null>(null)
   const [messageDraft, setMessageDraft] = useState<MessageDraft>(EMPTY_MESSAGE)
@@ -1174,6 +1195,12 @@ export function TeamAction({
                       )
                     })}
                   </div>
+                  <SubagentBranch
+                    entries={subagentEntries}
+                    columns={Math.max(view.members.length, ROSTER_MIN_TILES)}
+                    onOpen={(childSessionId, mode) => { openSubagent(sessionId, childSessionId, mode) }}
+                    t={t}
+                  />
                 </section>
                 <section className={css.taskDock} aria-labelledby="agent-team-tasks-heading">
                   <div className={css.sectionTitle}>
